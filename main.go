@@ -126,7 +126,11 @@ func probeLoop() {
 			payload := make([]byte, bootstrapInfoPacketLength)
 			payload[0] = bootstrapInfoPacketID
 
-			conn.Write(payload)
+			//just send it 2 times in case one packet gets lost
+			for i := 0; i < 2; i++ {
+				conn.Write(payload)
+			}
+
 			conn.SetReadDeadline(time.Now().Add(bootstrapInfoPacketTimeout * time.Second))
 			_, err = conn.Read(payload)
 			conn.Close()
@@ -193,6 +197,11 @@ func parseNodes() (*list.List, error) {
 							"",
 							"",
 						}
+
+						if node.Ipv6Address == "NONE" {
+							node.Ipv6Address = "-"
+						}
+
 						nodes.PushBack(&node)
 					}
 				}
