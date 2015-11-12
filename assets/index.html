@@ -1,0 +1,58 @@
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="X-UA-Compatible" content="IE=edge">
+		<meta name="viewport" content="width=device-width, initial-scale=1">
+		<title>Toxing.me</title>
+		<link href="css/bootstrap.min.css" rel="stylesheet">
+	</head>
+	<body>
+    <div class="container">
+			<div class="page-header">
+	    	<center>
+					<h2>Tox Nodes Status</h2>
+				</center>
+	    </div>
+			<div class="row">
+				<table class="table table-hover">
+	        <thead>
+            <tr>
+              <th>IPv4</th>
+              <th>IPv6</th>
+              <th>Port</th>
+              <th>Public Key</th>
+              <th>Maintainer</th>
+							<th>Location</th>
+							<th>Status</th>
+            </tr>
+	        </thead>
+					<tbody>
+						{{range .}}
+							<tr>
+								<td>{{.Ipv4Address | html}}</td>
+								<td>{{.Ipv6Address | html}}</td>
+								<td>{{.Port | html}}</td>
+								<td>{{.PublicKey | html}}</td>
+								<td>{{.Maintainer | html}}</td>
+								<td>{{.Location | html}}</td>
+								{{if .Status}}
+									<td><span style="color:green">ONLINE</span></td>
+								{{else}}
+									<td><span style="color:red">OFFLINE</span></td>
+								{{end}}
+							</tr>
+						{{end}}
+					</tbody>
+				</table>
+			</div>
+    </div>
+		<footer class="footer">
+      <center>
+				<p><a href="/json">Here's a list of these in JSON.</a></p>
+				<p>:^)</p>
+			</center>
+    </footer>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.11.3/jquery.min.js"></script>
+    <script src="js/bootstrap.min.js"></script>
+	</body>
+</html>
