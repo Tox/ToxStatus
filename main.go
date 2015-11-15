@@ -1,9 +1,8 @@
 package main
 
 import (
-	"bytes"
 	"container/list"
-	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -25,11 +24,12 @@ const (
 	wikiURI                    = "https://wiki.tox.chat/users/nodes?do=edit"
 	bootstrapInfoPacketID      = 240
 	bootstrapInfoPacketLength  = 78
-	bootstrapInfoPacketTimeout = 2 //in seconds
+	bootstrapInfoPacketTimeout = 4 //in seconds
 )
 
 var (
-	nodesList *list.List
+	nodesList = list.New()
+	crypto, _ = NewCrypto()
 )
 
 type toxNode struct {
@@ -45,6 +45,10 @@ type toxNode struct {
 }
 
 func main() {
+	if crypto == nil {
+		log.Fatalf("Could not generate keypair")
+	}
+
 	go probeLoop()
 
 	http.HandleFunc("/", handleHTTPRequest)
@@ -62,8 +66,7 @@ func handleHTTPRequest(w http.ResponseWriter, r *http.Request) {
 	//TODO: make this more efficient
 	data, err := ioutil.ReadFile(path.Join("./assets/", string(urlPath)))
 	if err != nil {
-		w.WriteHeader(404)
-		w.Write([]byte("404 - " + http.StatusText(404)))
+		http.Error(w, http.StatusText(404), 404)
 	} else {
 		w.Write(data)
 	}
@@ -73,35 +76,19 @@ func renderMainPage(w http.ResponseWriter, urlPath string) {
 	tmpl, err2 := template.ParseFiles(path.Join("./assets/", string(urlPath)))
 
 	if err2 != nil {
-		w.WriteHeader(500)
-		w.Write([]byte("500 - " + http.StatusText(500)))
+		http.Error(w, http.StatusText(500), 500)
 	} else {
-		nodes := make([]toxNode, nodesList.Len())
-
-		i := 0
-		for e := nodesList.Front(); e != nil; e = e.Next() {
-			node, _ := e.Value.(*toxNode)
-			nodes[i] = *node
-			i++
-		}
-
+		nodes := nodesListToSlice(nodesList)
 		tmpl.Execute(w, nodes)
 	}
 }
 
 func handleJSONRequest(w http.ResponseWriter, r *http.Request) {
-	nodes := make([]toxNode, nodesList.Len())
-
-	i := 0
-	for e := nodesList.Front(); e != nil; e = e.Next() {
-		node, _ := e.Value.(*toxNode)
-		nodes[i] = *node
-		i++
-	}
+	nodes := nodesListToSlice(nodesList)
 
 	bytes, err := json.Marshal(nodes)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Internal server error: %s", err.Error()), 500)
+		http.Error(w, http.StatusText(500), 500)
 		return
 	}
 
@@ -116,31 +103,14 @@ func probeLoop() {
 			continue
 		}
 
+		c := make(chan *toxNode)
 		for e := nodes.Front(); e != nil; e = e.Next() {
 			node, _ := e.Value.(*toxNode)
-			conn, err := net.Dial("udp", fmt.Sprintf("%s:%d", node.Ipv4Address, node.Port))
-			if err != nil {
-				continue
-			}
+			go func() { c <- probeNode(node) }()
+		}
 
-			payload := make([]byte, bootstrapInfoPacketLength)
-			payload[0] = bootstrapInfoPacketID
-
-			//just send it 2 times in case one packet gets lost
-			for i := 0; i < 2; i++ {
-				conn.Write(payload)
-			}
-
-			conn.SetReadDeadline(time.Now().Add(bootstrapInfoPacketTimeout * time.Second))
-			_, err = conn.Read(payload)
-			conn.Close()
-			if err != nil || payload[0] != bootstrapInfoPacketID {
-				continue
-			}
-
-			node.Version = fmt.Sprintf("%d", binary.BigEndian.Uint32(payload[1:5]))
-			node.MOTD = string(bytes.Trim(payload[5:bootstrapInfoPacketLength], "\x00"))
-			node.Status = true
+		for i := 0; i < nodes.Len(); i++ {
+			_ = <-c
 		}
 
 		nodesList = nodes
@@ -148,12 +118,78 @@ func probeLoop() {
 	}
 }
 
-func sprintNode(node toxNode) string {
-	return fmt.Sprintf("%s:%d in %s by %s", node.Ipv4Address, node.Port, node.Location, node.Maintainer)
+func probeNode(node *toxNode) *toxNode {
+	conn, err := net.Dial("udp", fmt.Sprintf("%s:%d", node.Ipv4Address, node.Port))
+	if err != nil {
+		return node
+	}
+
+	nodePublicKey, err := hex.DecodeString(node.PublicKey)
+	if err != nil {
+		return node
+	}
+
+	plain := make([]byte, len(crypto.PublicKey)+8)
+	copy(plain, crypto.PublicKey)
+	copy(plain[len(crypto.PublicKey):], nextBytes(8)) //ping id
+
+	nonce := nextNonce()
+	sharedKey := crypto.CreateSharedKey(nodePublicKey)
+	encrypted := encryptData(plain, sharedKey, nonce)[16:]
+
+	payload := make([]byte, 1+len(crypto.PublicKey)+len(nonce)+len(encrypted))
+	payload[0] = 2 //getnodes packet id
+	copy(payload[1:], crypto.PublicKey)
+	copy(payload[1+len(crypto.PublicKey):], nonce)
+	copy(payload[1+len(crypto.PublicKey)+len(nonce):], encrypted)
+
+	//just send it 2 times in case one packet gets lost
+	for i := 0; i < 2; i++ {
+		conn.Write(payload)
+	}
+
+	conn.SetReadDeadline(time.Now().Add(bootstrapInfoPacketTimeout * time.Second))
+	_, err = conn.Read(payload)
+	conn.Close()
+	if err != nil {
+		fmt.Printf("%s\n", err.Error())
+		return node
+	}
+
+	/*node.Version = fmt.Sprintf("%d", binary.BigEndian.Uint32(payload[1:5]))
+	node.MOTD = string(bytes.Trim(payload[5:bootstrapInfoPacketLength], "\x00"))*/
+	node.Status = true
+	return node
 }
 
-func probeNode() (motd string, err error) {
-	return "", nil
+func parseNode(nodeString string) *toxNode {
+	nodeString = stripSpaces(nodeString)
+	if !strings.HasPrefix(nodeString, "|") {
+		return nil
+	}
+
+	lineParts := strings.Split(nodeString, "|")
+	if port, err := strconv.Atoi(strings.TrimSpace(lineParts[3])); err == nil && len(lineParts) == 9 {
+		node := toxNode{
+			strings.TrimSpace(lineParts[1]),
+			strings.TrimSpace(lineParts[2]),
+			port,
+			strings.TrimSpace(lineParts[4]),
+			strings.TrimSpace(lineParts[5]),
+			strings.TrimSpace(lineParts[6]),
+			false,
+			"",
+			"",
+		}
+
+		if node.Ipv6Address == "NONE" {
+			node.Ipv6Address = "-"
+		}
+
+		return &node
+	}
+
+	return nil
 }
 
 func parseNodes() (*list.List, error) {
@@ -173,40 +209,21 @@ func parseNodes() (*list.List, error) {
 			return nil, tokenizer.Err()
 		case html.StartTagToken:
 			token := tokenizer.Token()
-			if token.Data == "textarea" {
-				tokenizer.Next()
-				token = tokenizer.Token()
-
-				lines := strings.Split(token.Data, "\n")
-				for _, line := range lines {
-					line = stripSpaces(line)
-					if !strings.HasPrefix(line, "|") {
-						continue
-					}
-
-					lineParts := strings.Split(line, "|")
-					if port, err := strconv.Atoi(strings.TrimSpace(lineParts[3])); err == nil && len(lineParts) == 9 {
-						node := toxNode{
-							strings.TrimSpace(lineParts[1]),
-							strings.TrimSpace(lineParts[2]),
-							port,
-							strings.TrimSpace(lineParts[4]),
-							strings.TrimSpace(lineParts[5]),
-							strings.TrimSpace(lineParts[6]),
-							false,
-							"",
-							"",
-						}
-
-						if node.Ipv6Address == "NONE" {
-							node.Ipv6Address = "-"
-						}
-
-						nodes.PushBack(&node)
-					}
-				}
-				return nodes, nil
+			if token.Data != "textarea" {
+				continue
 			}
+
+			tokenizer.Next()
+			token = tokenizer.Token()
+
+			lines := strings.Split(token.Data, "\n")
+			for _, line := range lines {
+				node := parseNode(line)
+				if node != nil {
+					nodes.PushBack(node)
+				}
+			}
+			return nodes, nil
 		}
 	}
 }
