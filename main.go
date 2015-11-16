@@ -212,14 +212,17 @@ func parseNodes() (*list.List, error) {
 	lines := strings.Split(string(content), "\n")
 	for _, line := range lines {
 		node := parseNode(line)
-		if node != nil {
-			oldNode := getOldNode(node.PublicKey)
-			if oldNode != nil { //transfer last ping info
-				node.LastPing = oldNode.LastPing
-				node.LastPingString = oldNode.LastPingString
-			}
-			nodes.PushBack(node)
+		if node == nil {
+			continue
 		}
+
+		oldNode := getOldNode(node.PublicKey)
+		if oldNode != nil { //transfer last ping info
+			node.LastPing = oldNode.LastPing
+			node.LastPingString = oldNode.LastPingString
+		}
+
+		nodes.PushBack(node)
 	}
 	return nodes, nil
 }
