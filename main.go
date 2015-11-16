@@ -14,14 +14,12 @@ import (
 	"strings"
 	"text/template"
 	"time"
-
-	"golang.org/x/net/html"
 )
 
 const (
 	httpListenPort             = 8081
 	refreshRate                = 60 //in seconds
-	wikiURI                    = "https://wiki.tox.chat/users/nodes?do=edit"
+	wikiURI                    = "https://wiki.tox.chat/users/nodes?do=export_raw"
 	bootstrapInfoPacketID      = 240
 	bootstrapInfoPacketLength  = 78
 	bootstrapInfoPacketTimeout = 4 //in seconds
@@ -206,37 +204,24 @@ func parseNodes() (*list.List, error) {
 	defer res.Body.Close()
 
 	nodes := list.New()
-	tokenizer := html.NewTokenizer(res.Body)
+	content, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		return nil, err
+	}
 
-	for {
-		token := tokenizer.Next()
-		switch token {
-		case html.ErrorToken:
-			return nil, tokenizer.Err()
-		case html.StartTagToken:
-			token := tokenizer.Token()
-			if token.Data != "textarea" {
-				continue
+	lines := strings.Split(string(content), "\n")
+	for _, line := range lines {
+		node := parseNode(line)
+		if node != nil {
+			oldNode := getOldNode(node.PublicKey)
+			if oldNode != nil { //transfer last ping info
+				node.LastPing = oldNode.LastPing
+				node.LastPingString = oldNode.LastPingString
 			}
-
-			tokenizer.Next()
-			token = tokenizer.Token()
-
-			lines := strings.Split(token.Data, "\n")
-			for _, line := range lines {
-				node := parseNode(line)
-				if node != nil {
-					oldNode := getOldNode(node.PublicKey)
-					if oldNode != nil { //transfer last ping info
-						node.LastPing = oldNode.LastPing
-						node.LastPingString = oldNode.LastPingString
-					}
-					nodes.PushBack(node)
-				}
-			}
-			return nodes, nil
+			nodes.PushBack(node)
 		}
 	}
+	return nodes, nil
 }
 
 func getOldNode(publicKey string) *toxNode {
