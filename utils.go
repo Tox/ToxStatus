@@ -37,14 +37,21 @@ func nodesListToSlice(l *list.List) []toxNode {
 
 func getSimpleDurationFormat(duration time.Duration) string {
 	hours := duration.Hours()
+	var format string
 
 	if hours >= 24 {
-		return fmt.Sprintf("%0.0f days", hours/24)
+		format = fmt.Sprintf("%.0f day", hours/24)
 	} else if hours > 1 {
-		return fmt.Sprintf("%0.0f hours", hours)
+		format = fmt.Sprintf("%.0f hour", hours)
 	} else if hours*60 > 1 {
-		return fmt.Sprintf("%0.0f minutes", hours*60)
+		format = fmt.Sprintf("%.0f minute", hours*60)
+	} else {
+		format = fmt.Sprintf("%.0f second", hours*60*60)
 	}
 
-	return fmt.Sprintf("%0.0f seconds", hours*60*60)
+	if strings.Split(format, " ")[0] != "1" {
+		format += "s"
+	}
+
+	return format
 }
