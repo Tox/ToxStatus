@@ -25,6 +25,7 @@
               <th>Maintainer</th>
 							<th>Location</th>
 							<th>Status</th>
+							<th>Last Ping</th>
             </tr>
 	        </thead>
 					<tbody>
@@ -41,6 +42,7 @@
 								{{else}}
 									<td><span style="color:red">OFFLINE</span></td>
 								{{end}}
+								<td>{{.LastPingString | html}}</td>
 							</tr>
 						{{end}}
 					</tbody>

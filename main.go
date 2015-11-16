@@ -33,15 +33,17 @@ var (
 )
 
 type toxNode struct {
-	Ipv4Address string `json:"ipv4"`
-	Ipv6Address string `json:"ipv6"`
-	Port        int    `json:"port"`
-	PublicKey   string `json:"public_key"`
-	Maintainer  string `json:"maintainer"`
-	Location    string `json:"location"`
-	Status      bool   `json:"status"`
-	Version     string `json:"version"`
-	MOTD        string `json:"motd"`
+	Ipv4Address    string `json:"ipv4"`
+	Ipv6Address    string `json:"ipv6"`
+	Port           int    `json:"port"`
+	PublicKey      string `json:"public_key"`
+	Maintainer     string `json:"maintainer"`
+	Location       string `json:"location"`
+	Status         bool   `json:"status"`
+	Version        string `json:"version"`
+	MOTD           string `json:"motd"`
+	LastPing       int64  `json:"last_ping"`
+	LastPingString string `json:"last_ping_string"`
 }
 
 func main() {
@@ -77,6 +79,7 @@ func renderMainPage(w http.ResponseWriter, urlPath string) {
 
 	if err2 != nil {
 		http.Error(w, http.StatusText(500), 500)
+		log.Printf("Internal server error while trying to serve index: %s", err2.Error())
 	} else {
 		nodes := nodesListToSlice(nodesList)
 		tmpl.Execute(w, nodes)
@@ -158,6 +161,7 @@ func probeNode(node *toxNode) *toxNode {
 
 	/*node.Version = fmt.Sprintf("%d", binary.BigEndian.Uint32(payload[1:5]))
 	node.MOTD = string(bytes.Trim(payload[5:bootstrapInfoPacketLength], "\x00"))*/
+	node.LastPing = time.Now().Unix()
 	node.Status = true
 	return node
 }
@@ -180,6 +184,8 @@ func parseNode(nodeString string) *toxNode {
 			false,
 			"",
 			"",
+			0,
+			"Never",
 		}
 
 		if node.Ipv6Address == "NONE" {
@@ -220,10 +226,25 @@ func parseNodes() (*list.List, error) {
 			for _, line := range lines {
 				node := parseNode(line)
 				if node != nil {
+					oldNode := getOldNode(node.PublicKey)
+					if oldNode != nil { //transfer last ping info
+						node.LastPing = oldNode.LastPing
+						node.LastPingString = oldNode.LastPingString
+					}
 					nodes.PushBack(node)
 				}
 			}
 			return nodes, nil
 		}
 	}
+}
+
+func getOldNode(publicKey string) *toxNode {
+	for e := nodesList.Front(); e != nil; e = e.Next() {
+		node, _ := e.Value.(*toxNode)
+		if node.PublicKey == publicKey {
+			return node
+		}
+	}
+	return nil
 }

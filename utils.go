@@ -2,7 +2,9 @@ package main
 
 import (
 	"container/list"
+	"fmt"
 	"strings"
+	"time"
 	"unicode"
 )
 
@@ -22,6 +24,10 @@ func nodesListToSlice(l *list.List) []toxNode {
 	i := 0
 	for e := nodesList.Front(); e != nil; e = e.Next() {
 		node, _ := e.Value.(*toxNode)
+		//while we're at it, let's update the last ping string!
+		if node.LastPing != 0 {
+			node.LastPingString = fmt.Sprintf("%0.2f min", time.Now().Sub(time.Unix(node.LastPing, 0)).Minutes())
+		}
 		nodes[i] = *node
 		i++
 	}
