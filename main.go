@@ -173,7 +173,7 @@ func parseNode(nodeString string) *toxNode {
 	}
 
 	lineParts := strings.Split(nodeString, "|")
-	if port, err := strconv.Atoi(strings.TrimSpace(lineParts[3])); err == nil && len(lineParts) == 9 {
+	if port, err := strconv.Atoi(strings.TrimSpace(lineParts[3])); err == nil && len(lineParts) == 8 {
 		node := toxNode{
 			strings.TrimSpace(lineParts[1]),
 			strings.TrimSpace(lineParts[2]),
