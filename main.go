@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"container/list"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -17,12 +19,15 @@ import (
 )
 
 const (
-	httpListenPort             = 8081
-	refreshRate                = 60 //in seconds
-	wikiURI                    = "https://wiki.tox.chat/users/nodes?do=export_raw"
-	bootstrapInfoPacketID      = 240
-	bootstrapInfoPacketLength  = 78
-	bootstrapInfoPacketTimeout = 4 //in seconds
+	httpListenPort            = 8081
+	refreshRate               = 60 //in seconds
+	wikiURI                   = "https://wiki.tox.chat/users/nodes?do=export_raw"
+	maxUDPPacketSize          = 2048
+	getNodesPacketID          = 2
+	sendNodesIpv6PacketID     = 4
+	bootstrapInfoPacketID     = 240
+	bootstrapInfoPacketLength = 78
+	queryTimeout              = 4 //in seconds
 )
 
 var (
@@ -120,14 +125,38 @@ func probeLoop() {
 }
 
 func probeNode(node *toxNode) *toxNode {
-	conn, err := net.Dial("udp", fmt.Sprintf("%s:%d", node.Ipv4Address, node.Port))
+	conn, err := newNodeConn(node)
 	if err != nil {
 		return node
 	}
 
-	nodePublicKey, err := hex.DecodeString(node.PublicKey)
+	err = getBootstrapInfo(node, conn)
+	if err != nil {
+		fmt.Printf("%s\n", err.Error())
+	}
+
+	conn.Close()
+	conn, err = newNodeConn(node)
 	if err != nil {
 		return node
+	}
+
+	err = getNodes(node, conn)
+	if err != nil {
+		fmt.Printf("%s\n", err.Error())
+		return node
+	}
+	conn.Close()
+
+	node.LastPing = time.Now().Unix()
+	node.Status = true
+	return node
+}
+
+func getNodes(node *toxNode, conn net.Conn) error {
+	nodePublicKey, err := hex.DecodeString(node.PublicKey)
+	if err != nil {
+		return err
 	}
 
 	plain := make([]byte, len(crypto.PublicKey)+8)
@@ -139,29 +168,53 @@ func probeNode(node *toxNode) *toxNode {
 	encrypted := encryptData(plain, sharedKey, nonce)[16:]
 
 	payload := make([]byte, 1+len(crypto.PublicKey)+len(nonce)+len(encrypted))
-	payload[0] = 2 //getnodes packet id
+	payload[0] = getNodesPacketID
 	copy(payload[1:], crypto.PublicKey)
 	copy(payload[1+len(crypto.PublicKey):], nonce)
 	copy(payload[1+len(crypto.PublicKey)+len(nonce):], encrypted)
+	conn.Write(payload)
 
-	//just send it 2 times in case one packet gets lost
-	for i := 0; i < 2; i++ {
-		conn.Write(payload)
-	}
+	buffer := make([]byte, maxUDPPacketSize)
+	_, err = conn.Read(buffer)
 
-	conn.SetReadDeadline(time.Now().Add(bootstrapInfoPacketTimeout * time.Second))
-	_, err = conn.Read(payload)
-	conn.Close()
 	if err != nil {
-		fmt.Printf("%s\n", err.Error())
-		return node
+		return err
+	} /*else if payload[0] != sendNodesIpv6PacketID {
+		return fmt.Errorf("packet id: %d is not a sendnodesipv6 packet", payload[0])
 	}
 
-	/*node.Version = fmt.Sprintf("%d", binary.BigEndian.Uint32(payload[1:5]))
-	node.MOTD = string(bytes.Trim(payload[5:bootstrapInfoPacketLength], "\x00"))*/
-	node.LastPing = time.Now().Unix()
-	node.Status = true
-	return node
+	right now we're happy if a node responds to our 'getnodes' request, without even validating the response
+	this needs some more work
+
+	on a side note: it looks like nodes are sending a 'getnodes' packet before 'sendnodesipv6',
+	*/
+
+	return nil
+}
+
+func newNodeConn(node *toxNode) (net.Conn, error) {
+	conn, err := net.Dial("udp", fmt.Sprintf("%s:%d", node.Ipv4Address, node.Port))
+	if err != nil {
+		return nil, err
+	}
+	conn.SetReadDeadline(time.Now().Add(queryTimeout * time.Second))
+	return conn, nil
+}
+
+func getBootstrapInfo(node *toxNode, conn net.Conn) error {
+	payload := make([]byte, bootstrapInfoPacketLength)
+	payload[0] = bootstrapInfoPacketID
+	conn.Write(payload)
+
+	if _, err := conn.Read(payload); err != nil {
+		return err
+	} else if payload[0] != bootstrapInfoPacketID {
+		return fmt.Errorf("packet id: %d is not a bootstrap info packet", payload[0])
+	}
+
+	node.Version = fmt.Sprintf("%d", binary.BigEndian.Uint32(payload[1:5]))
+	node.MOTD = string(bytes.Trim(payload[5:bootstrapInfoPacketLength], "\x00"))
+	return nil
 }
 
 func parseNode(nodeString string) *toxNode {
