@@ -15,38 +15,46 @@
 				</center>
 	    </div>
 			<div class="row">
-				<table class="table table-hover" style="font-size:12.5px;">
-	        <thead>
-            <tr>
-              <th>IPv4</th>
-              <th>IPv6</th>
-              <th>Port</th>
-              <th>Public Key</th>
-              <th>Maintainer</th>
-							<th>Location</th>
-							<th>Status</th>
-							<th>Last Ping</th>
-            </tr>
-	        </thead>
-					<tbody>
-						{{range .}}
-							<tr>
-								<td>{{.Ipv4Address | html}}</td>
-								<td>{{.Ipv6Address | html}}</td>
-								<td>{{.Port | html}}</td>
-								<td>{{.PublicKey | html}}</td>
-								<td>{{.Maintainer | html}}</td>
-								<td>{{.Location | html}}</td>
-								{{if .Status}}
-									<td><span style="color:green">ONLINE</span></td>
-								{{else}}
-									<td><span style="color:red">OFFLINE</span></td>
-								{{end}}
-								<td>{{.LastPingString | html}}</td>
-							</tr>
-						{{end}}
-					</tbody>
-				</table>
+				<div class="panel panel-default" id="accordion">
+					<table class="table table-collapse" style="font-size:14px;">
+		        <thead>
+	            <tr>
+	              <th>IPv4</th>
+	              <th>IPv6</th>
+	              <th>Port</th>
+	              <th>Public Key</th>
+								<th>Status</th>
+	            </tr>
+		        </thead>
+						<tbody>
+							{{range .}}
+								<tr class="collapsed" data-parent="#accordion" data-toggle="collapse" data-target="#collapse{{.PublicKey | html}}">
+									<td>{{.Ipv4Address | html}}</td>
+									<td>{{.Ipv6Address | html}}</td>
+									<td>{{.Port | html}}</td>
+									<td>{{.PublicKey | html}}</td>
+									{{if .Status}}
+										<td><span style="color:green">ONLINE</span></td>
+									{{else}}
+										<td><span style="color:red">OFFLINE</span></td>
+									{{end}}
+								</tr>
+								<tr class="collapse" id="collapse{{.PublicKey | html}}">
+									<td colspan="7">
+										<dl>
+											<dt>Maintainer</dt>
+											<dd>{{.Maintainer | html}}</dd>
+											<dt>Location</dt>
+											<dd>{{.Location | html}}</dd>
+											<dt>Last Ping</dt>
+											<dd>{{.LastPingString | html}}</dd>
+										</dl>
+									</td>
+								</tr>
+							{{end}}
+						</tbody>
+					</table>
+				</div>
 			</div>
     </div>
 		<footer class="footer">

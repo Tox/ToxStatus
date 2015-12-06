@@ -3,3 +3,29 @@
         max-width: 1500px;
     }
 }
+
+/* the table-collapse stuff was taken from http://codepen.io/miloslovesky/pen/AawcB and is licensed under MIT */
+.table-collapse > tbody > tr {
+  cursor: pointer;
+  background-color: #f5f5f5;
+}
+.table-collapse > tbody > tr.collapsed {
+  background-color: #fff;
+}
+.table-collapse > tbody > tr.collapsed:hover {
+  background-color: #f5f5f5;
+}
+.table-collapse > tbody > tr.collapsing {
+  -webkit-transition: height 0.01s ease;
+          transition: height 0.01s ease;
+  height: auto;
+}
+.table-collapse > tbody > tr.collapsing,
+.table-collapse > tbody > tr.collapse {
+  cursor: default;
+  background-color: #f5f5f5;
+}
+.table-collapse > tbody > tr.collapsing > td,
+.table-collapse > tbody > tr.collapse > td {
+  border-top: 0;
+}
