@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"container/list"
 	"encoding/binary"
 	"encoding/hex"
@@ -222,7 +223,7 @@ func getBootstrapInfo(node *toxNode, conn net.Conn) error {
 	}
 
 	node.Version = fmt.Sprintf("%d", binary.BigEndian.Uint32(buffer[1:1+4]))
-	node.MOTD = string(buffer[1+4:])
+	node.MOTD = string(bytes.Trim(buffer[1+4:], "\x00"))
 	return nil
 }
 
