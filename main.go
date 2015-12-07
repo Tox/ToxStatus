@@ -1,11 +1,11 @@
 package main
 
 import (
-	"bytes"
 	"container/list"
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -27,6 +27,7 @@ const (
 	sendNodesIpv6PacketID     = 4
 	bootstrapInfoPacketID     = 240
 	bootstrapInfoPacketLength = 78
+	maxMOTDLength             = 256
 	queryTimeout              = 4 //in seconds
 )
 
@@ -206,14 +207,22 @@ func getBootstrapInfo(node *toxNode, conn net.Conn) error {
 	payload[0] = bootstrapInfoPacketID
 	conn.Write(payload)
 
-	if _, err := conn.Read(payload); err != nil {
+	buffer := make([]byte, 1+4+maxMOTDLength)
+	read, err := conn.Read(buffer)
+
+	if err != nil {
 		return err
-	} else if payload[0] != bootstrapInfoPacketID {
-		return fmt.Errorf("packet id: %d is not a bootstrap info packet", payload[0])
+	} else if buffer[0] != bootstrapInfoPacketID {
+		return fmt.Errorf("packet id: %d is not a bootstrap info packet", buffer[0])
 	}
 
-	node.Version = fmt.Sprintf("%d", binary.BigEndian.Uint32(payload[1:5]))
-	node.MOTD = string(bytes.Trim(payload[5:bootstrapInfoPacketLength], "\x00"))
+	buffer = buffer[:read]
+	if len(buffer) < 1+4 {
+		return errors.New("bootstrap info packet too small")
+	}
+
+	node.Version = fmt.Sprintf("%d", binary.BigEndian.Uint32(buffer[1:1+4]))
+	node.MOTD = string(buffer[1+4:])
 	return nil
 }
 
