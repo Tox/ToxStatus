@@ -41,28 +41,26 @@
 								</tr>
 								<tr class="collapse" id="collapse{{.PublicKey | html}}">
 									<td colspan="7">
-										<div class="container">
-											<div class="col-md-2">
+										<div class="col-md-2">
+											<dl>
+												<dt>Maintainer</dt>
+												<dd>{{.Maintainer | html}}</dd>
+												<dt>Location</dt>
+												<dd>{{.Location | html}}</dd>
+												<dt>Last Ping</dt>
+												<dd>{{.LastPingString | html}}</dd>
+											</dl>
+										</div>
+										{{if ne .Version ""}}
+											<div class="col-md-10">
 												<dl>
-													<dt>Maintainer</dt>
-													<dd>{{.Maintainer | html}}</dd>
-													<dt>Location</dt>
-													<dd>{{.Location | html}}</dd>
-													<dt>Last Ping</dt>
-													<dd>{{.LastPingString | html}}</dd>
+													<dt>MOTD</dt>
+													<dd>{{.MOTD | html}}</dd>
+													<dt>Version</dt>
+													<dd>{{.Version | html}}</dd>
 												</dl>
 											</div>
-											{{if ne .Version ""}}
-												<div class="col-md-10">
-													<dl>
-														<dt>MOTD</dt>
-														<dd>{{.MOTD | html}}</dd>
-														<dt>Version</dt>
-														<dd>{{.Version | html}}</dd>
-													</dl>
-												</div>
-											{{end}}
-										</div>
+										{{end}}
 									</td>
 								</tr>
 							{{end}}
