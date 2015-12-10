@@ -53,17 +53,25 @@
 									<dl>
 										<dt>Location</dt>
 										<dd>{{.Location | html}}</dd>
+									</dl>
+								</div>
+								<div class="col-md-2">
+									<dl>
 										<dt>Last Ping</dt>
 										<dd>{{.LastPingString | html}}</dd>
 									</dl>
 								</div>
 								{{if ne .Version ""}}
-								<div class="col-md-10">
+								<div class="col-md-2">
+									<dl>
+										<dt>Version</dt>
+										<dd>{{.Version | html}}</dd>
+									</dl>
+								</div>
+								<div class="col-md-6">
 									<dl>
 										<dt>MOTD</dt>
 										<dd style="white-space: pre-wrap;">{{.MOTD | html}}</dd>
-										<dt>Version</dt>
-										<dd>{{.Version | html}}</dd>
 									</dl>
 								</div>
 								{{end}}
