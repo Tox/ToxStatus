@@ -108,20 +108,20 @@ func probeLoop() {
 		nodes, err := parseNodes()
 		if err != nil {
 			log.Printf("Error while trying to parse nodes: %s", err.Error())
-			continue
+		} else {
+			c := make(chan *toxNode)
+			for e := nodes.Front(); e != nil; e = e.Next() {
+				node, _ := e.Value.(*toxNode)
+				go func() { c <- probeNode(node) }()
+			}
+
+			for i := 0; i < nodes.Len(); i++ {
+				_ = <-c
+			}
+
+			nodesList = nodes
 		}
 
-		c := make(chan *toxNode)
-		for e := nodes.Front(); e != nil; e = e.Next() {
-			node, _ := e.Value.(*toxNode)
-			go func() { c <- probeNode(node) }()
-		}
-
-		for i := 0; i < nodes.Len(); i++ {
-			_ = <-c
-		}
-
-		nodesList = nodes
 		time.Sleep(refreshRate * time.Second)
 	}
 }
