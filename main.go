@@ -33,9 +33,16 @@ const (
 )
 
 var (
+	lastScan  int64
 	nodesList = list.New()
 	crypto, _ = NewCrypto()
 )
+
+type toxStatus struct {
+	LastScan       int64     `json:"last_scan"`
+	LastScanString string    `json:"last_scan_string"`
+	Nodes          []toxNode `json:"nodes"`
+}
 
 type toxNode struct {
 	Ipv4Address    string `json:"ipv4"`
@@ -87,14 +94,16 @@ func renderMainPage(w http.ResponseWriter, urlPath string) {
 		log.Printf("Internal server error while trying to serve index: %s", err2.Error())
 	} else {
 		nodes := nodesListToSlice(nodesList)
-		tmpl.Execute(w, nodes)
+		response := toxStatus{lastScan, time.Unix(lastScan, 0).String(), nodes}
+		tmpl.Execute(w, response)
 	}
 }
 
 func handleJSONRequest(w http.ResponseWriter, r *http.Request) {
 	nodes := nodesListToSlice(nodesList)
+	response := toxStatus{lastScan, time.Unix(lastScan, 0).String(), nodes}
 
-	bytes, err := json.Marshal(nodes)
+	bytes, err := json.Marshal(response)
 	if err != nil {
 		http.Error(w, http.StatusText(500), 500)
 		return
@@ -120,6 +129,7 @@ func probeLoop() {
 			}
 
 			nodesList = nodes
+			lastScan = time.Now().Unix()
 		}
 
 		time.Sleep(refreshRate * time.Second)

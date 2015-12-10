@@ -29,7 +29,7 @@
 						</tr>
 					</thead>
 					<tbody>
-						{{range .}}
+						{{range .Nodes}}
 						<tr class="collapsed" data-parent="#accordion" data-toggle="collapse" data-target="#collapse{{.PublicKey | html}}">
 							<td>{{.Ipv4Address | html}}</td>
 							<td>{{.Ipv6Address | html}}</td>
@@ -79,6 +79,7 @@
 		<div class="container">
 			<a class="text-muted pull-left" href="/json">JSON</a>
 			<a class="text-muted pull-right" target="_blank" href="https://github.com/Tox/ToxStatus">I'm open source!</a>
+			<p class="text-muted text-center">Last successful scan: {{.LastScanString}}</p>
 		</div>
 	</footer>
 	<script src="https://ajax.googleapis.com/ajax/libs/jquery/1.11.3/jquery.min.js"></script>
