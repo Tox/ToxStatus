@@ -7,11 +7,13 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
+	"os"
 	"path"
 	"strconv"
 	"strings"
@@ -41,6 +43,14 @@ var (
 	crypto, _    = NewCrypto()
 	tcpPorts     = []int{443, 3389, 33445}
 	lowerFuncMap = template.FuncMap{"lower": strings.ToLower}
+)
+
+//flags
+var (
+	networkFlag = flag.String("net", "udp", "network type, either 'udp' or 'tcp'")
+	ipFlag      = flag.String("ip", "127.0.0.1", "ip address to scan, can only be ipv4 for now")
+	portFlag    = flag.Int("port", 33445, "port(s) to scan")
+	keyFlag     = flag.String("key", "", "public key of the node")
 )
 
 type tcpHandshakeResult struct {
@@ -74,11 +84,42 @@ func main() {
 		log.Fatalf("Could not generate keypair")
 	}
 
+	if handleFlags() {
+		return
+	}
+
 	go probeLoop()
 
 	http.HandleFunc("/", handleHTTPRequest)
 	http.HandleFunc("/json", handleJSONRequest)
 	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", httpListenPort), nil))
+}
+
+func handleFlags() bool {
+	if len(os.Args) < 2 {
+		return false
+	}
+
+	flag.Parse()
+
+	if len(*keyFlag) != 64 {
+		log.Fatalln("error: public key must have a lenght of 64 hex characters")
+	}
+
+	node := toxNode{}
+	node.Ipv4Address = *ipFlag
+	node.PublicKey = *keyFlag
+	node.Port = *portFlag
+
+	if *networkFlag == "udp" {
+		probeNode(&node)
+	} else if *networkFlag == "tcp" {
+
+	} else {
+		log.Fatalf("error: unsupported network specified: %s", *networkFlag)
+	}
+
+	return true
 }
 
 func handleHTTPRequest(w http.ResponseWriter, r *http.Request) {
