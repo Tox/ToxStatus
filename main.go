@@ -32,7 +32,7 @@ const (
 	tcpHandshakeResponsePacketLength = 96
 	maxMOTDLength                    = 256
 	queryTimeout                     = 4 //in seconds
-	dialerTimeout                    = 2 //in seconds
+	dialerTimeout                    = 4 //in seconds
 )
 
 var (
