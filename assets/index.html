@@ -21,6 +21,7 @@
 				<table class="table table-collapse table-condensed" style="font-size:14px;">
 					<thead>
 						<tr>
+							<th></th>
 							<th>IPv4</th>
 							<th>IPv6</th>
 							<th>Port</th>
@@ -32,6 +33,7 @@
 					<tbody>
 						{{range .Nodes}}
 						<tr class="collapsed" data-parent="#accordion" data-toggle="collapse" data-target="#collapse{{.PublicKey | html}}">
+							<td><img src="/img/flags/{{.Location | html | lower}}.png" title="{{.Location | html}}" style="position:relative;top:50%;transform:translateY(50%);"/></td>
 							<td>{{.Ipv4Address | html}}</td>
 							<td>{{.Ipv6Address | html}}</td>
 							<td>{{.Port | html}}</td>

@@ -36,10 +36,11 @@ const (
 )
 
 var (
-	lastScan  int64
-	nodesList = list.New()
-	crypto, _ = NewCrypto()
-	tcpPorts  = []int{443, 3389, 33445}
+	lastScan     int64
+	nodesList    = list.New()
+	crypto, _    = NewCrypto()
+	tcpPorts     = []int{443, 3389, 33445}
+	lowerFuncMap = template.FuncMap{"lower": strings.ToLower}
 )
 
 type tcpHandshakeResult struct {
@@ -97,11 +98,13 @@ func handleHTTPRequest(w http.ResponseWriter, r *http.Request) {
 }
 
 func renderMainPage(w http.ResponseWriter, urlPath string) {
-	tmpl, err2 := template.ParseFiles(path.Join("./assets/", string(urlPath)))
+	tmpl, err := template.New("index.html").
+		Funcs(lowerFuncMap).
+		ParseFiles(path.Join("./assets/", string(urlPath)))
 
-	if err2 != nil {
+	if err != nil {
 		http.Error(w, http.StatusText(500), 500)
-		log.Printf("Internal server error while trying to serve index: %s", err2.Error())
+		log.Printf("Internal server error while trying to serve index: %s", err.Error())
 	} else {
 		nodes := nodesListToSlice(nodesList)
 		response := toxStatus{lastScan, time.Unix(lastScan, 0).String(), nodes}
