@@ -55,3 +55,12 @@ func getSimpleDurationFormat(duration time.Duration) string {
 
 	return format
 }
+
+func contains(ints []int, q int) bool {
+	for _, i := range ints {
+		if i == q {
+			return true
+		}
+	}
+	return false
+}
