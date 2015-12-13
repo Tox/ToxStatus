@@ -32,6 +32,7 @@ const (
 	tcpHandshakeResponsePacketLength = 96
 	maxMOTDLength                    = 256
 	queryTimeout                     = 4 //in seconds
+	dialerTimeout                    = 2 //in seconds
 )
 
 var (
@@ -308,10 +309,14 @@ func tryTCPHandshake(node *toxNode, conn net.Conn, port int) tcpHandshakeResult 
 }
 
 func newNodeConn(node *toxNode, port int, network string) (net.Conn, error) {
-	conn, err := net.Dial(network, fmt.Sprintf("%s:%d", node.Ipv4Address, port))
+	dialer := net.Dialer{}
+	dialer.Deadline = time.Now().Add(dialerTimeout * time.Second)
+
+	conn, err := dialer.Dial(network, fmt.Sprintf("%s:%d", node.Ipv4Address, port))
 	if err != nil {
 		return nil, err
 	}
+
 	conn.SetReadDeadline(time.Now().Add(queryTimeout * time.Second))
 	return conn, nil
 }
