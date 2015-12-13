@@ -48,8 +48,8 @@ var (
 //flags
 var (
 	networkFlag = flag.String("net", "udp", "network type, either 'udp' or 'tcp'")
-	ipFlag      = flag.String("ip", "127.0.0.1", "ip address to scan, can only be ipv4 for now")
-	portFlag    = flag.Int("port", 33445, "port(s) to scan")
+	ipFlag      = flag.String("ip", "127.0.0.1", "ip address to probe, ipv4 and ipv6 are both supported")
+	portFlag    = flag.Int("port", 33445, "port to probe")
 	keyFlag     = flag.String("key", "", "public key of the node")
 )
 
@@ -107,14 +107,26 @@ func handleFlags() bool {
 	}
 
 	node := toxNode{}
-	node.Ipv4Address = *ipFlag
+	node.Ipv4Address = *ipFlag //HACK: ipv6 addresses will also end up here
 	node.PublicKey = *keyFlag
 	node.Port = *portFlag
 
 	if *networkFlag == "udp" {
-		probeNode(&node)
+		err := probeNode(&node)
+		if err == nil {
+			log.Println("success: this node appears to be online!")
+		} else {
+			log.Printf("error: %s", err.Error())
+			log.Println("fail: this node appears to be offline!")
+		}
 	} else if *networkFlag == "tcp" {
-
+		err := probeNodeTCP(&node)
+		if err == nil {
+			log.Println("success: this relay appears to be online!")
+		} else {
+			log.Printf("error: %s", err.Error())
+			log.Println("fail: this relay appears to be offline!")
+		}
 	} else {
 		log.Fatalf("error: unsupported network specified: %s", *networkFlag)
 	}
@@ -172,14 +184,28 @@ func probeLoop() {
 		if err != nil {
 			log.Printf("Error while trying to parse nodes: %s", err.Error())
 		} else {
-			c := make(chan *toxNode)
+			c := make(chan error)
 			for e := nodes.Front(); e != nil; e = e.Next() {
 				node, _ := e.Value.(*toxNode)
-				go func() { c <- probeNode(node) }()
+				go func() {
+					err := probeNode(node)
+					if err == nil {
+						ports := tcpPorts
+						if !contains(tcpPorts, node.Port) {
+							ports = append(ports, node.Port)
+						}
+
+						probeNodeTCPPorts(node, ports)
+					}
+					c <- err
+				}()
 			}
 
 			for i := 0; i < nodes.Len(); i++ {
-				_ = <-c
+				err = <-c
+				if err != nil {
+					log.Printf("error: %s", err.Error())
+				}
 			}
 
 			nodesList = nodes
@@ -190,39 +216,11 @@ func probeLoop() {
 	}
 }
 
-func probeNode(node *toxNode) *toxNode {
-	conn, err := newNodeConn(node, node.Port, "udp")
-	if err != nil {
-		return node
-	}
-
-	err = getBootstrapInfo(node, conn)
-	if err != nil {
-		fmt.Printf("%s\n", err.Error())
-	}
-
-	conn.Close()
-	conn, err = newNodeConn(node, node.Port, "udp")
-	if err != nil {
-		return node
-	}
-
-	err = getNodes(node, conn)
-	if err != nil {
-		fmt.Printf("%s\n", err.Error())
-		return node
-	}
-	conn.Close()
-
-	ports := tcpPorts
-	if !contains(tcpPorts, node.Port) {
-		ports = append(ports, node.Port)
-	}
-
+func probeNodeTCPPorts(node *toxNode, ports []int) {
 	c := make(chan tcpHandshakeResult)
 	for _, port := range ports {
 		go func(p int) {
-			conn, err = newNodeConn(node, p, "tcp")
+			conn, err := newNodeConn(node, p, "tcp")
 			if err != nil {
 				fmt.Printf("%s\n", err.Error())
 				c <- tcpHandshakeResult{p, err}
@@ -240,10 +238,43 @@ func probeNode(node *toxNode) *toxNode {
 			node.TCPPorts = append(node.TCPPorts, result.Port)
 		}
 	}
+}
+
+func probeNodeTCP(node *toxNode) error {
+	conn, err := newNodeConn(node, node.Port, "tcp")
+	if err != nil {
+		return err
+	}
+
+	return tryTCPHandshake(node, conn, node.Port).Error
+}
+
+func probeNode(node *toxNode) error {
+	conn, err := newNodeConn(node, node.Port, "udp")
+	if err != nil {
+		return err
+	}
+
+	err = getBootstrapInfo(node, conn)
+	if err != nil {
+		return err
+	}
+
+	conn.Close()
+	conn, err = newNodeConn(node, node.Port, "udp")
+	if err != nil {
+		return err
+	}
+
+	err = getNodes(node, conn)
+	if err != nil {
+		return err
+	}
+	conn.Close()
 
 	node.LastPing = time.Now().Unix()
 	node.Status = true
-	return node
+	return nil
 }
 
 func getNodes(node *toxNode, conn net.Conn) error {
