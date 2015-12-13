@@ -20,23 +20,32 @@ import (
 )
 
 const (
-	httpListenPort            = 8081
-	refreshRate               = 60 //in seconds
-	wikiURI                   = "https://wiki.tox.chat/users/nodes?do=export_raw"
-	maxUDPPacketSize          = 2048
-	getNodesPacketID          = 2
-	sendNodesIpv6PacketID     = 4
-	bootstrapInfoPacketID     = 240
-	bootstrapInfoPacketLength = 78
-	maxMOTDLength             = 256
-	queryTimeout              = 4 //in seconds
+	httpListenPort                   = 8081
+	refreshRate                      = 60 //in seconds
+	wikiURI                          = "https://wiki.tox.chat/users/nodes?do=export_raw"
+	maxUDPPacketSize                 = 2048
+	getNodesPacketID                 = 2
+	sendNodesIpv6PacketID            = 4
+	bootstrapInfoPacketID            = 240
+	bootstrapInfoPacketLength        = 78
+	tcpHandshakePacketLength         = 128
+	tcpHandshakeResponsePacketLength = 96
+	maxMOTDLength                    = 256
+	queryTimeout                     = 4 //in seconds
+	dialerTimeout                    = 2 //in seconds
 )
 
 var (
 	lastScan  int64
 	nodesList = list.New()
 	crypto, _ = NewCrypto()
+	tcpPorts  = []int{443, 3389, 33445}
 )
+
+type tcpHandshakeResult struct {
+	Port  int
+	Error error
+}
 
 type toxStatus struct {
 	LastScan       int64     `json:"last_scan"`
@@ -48,6 +57,7 @@ type toxNode struct {
 	Ipv4Address    string `json:"ipv4"`
 	Ipv6Address    string `json:"ipv6"`
 	Port           int    `json:"port"`
+	TCPPorts       []int  `json:"tcp_ports"`
 	PublicKey      string `json:"public_key"`
 	Maintainer     string `json:"maintainer"`
 	Location       string `json:"location"`
@@ -137,7 +147,7 @@ func probeLoop() {
 }
 
 func probeNode(node *toxNode) *toxNode {
-	conn, err := newNodeConn(node)
+	conn, err := newNodeConn(node, node.Port, "udp")
 	if err != nil {
 		return node
 	}
@@ -148,7 +158,7 @@ func probeNode(node *toxNode) *toxNode {
 	}
 
 	conn.Close()
-	conn, err = newNodeConn(node)
+	conn, err = newNodeConn(node, node.Port, "udp")
 	if err != nil {
 		return node
 	}
@@ -159,6 +169,33 @@ func probeNode(node *toxNode) *toxNode {
 		return node
 	}
 	conn.Close()
+
+	ports := tcpPorts
+	if !contains(tcpPorts, node.Port) {
+		ports = append(ports, node.Port)
+	}
+
+	c := make(chan tcpHandshakeResult)
+	for _, port := range ports {
+		go func(p int) {
+			conn, err = newNodeConn(node, p, "tcp")
+			if err != nil {
+				fmt.Printf("%s\n", err.Error())
+				c <- tcpHandshakeResult{p, err}
+			} else {
+				c <- tryTCPHandshake(node, conn, p)
+			}
+		}(port)
+	}
+
+	for i := 0; i < len(ports); i++ {
+		result := <-c
+		if result.Error != nil {
+			fmt.Printf("%s\n", result.Error.Error())
+		} else {
+			node.TCPPorts = append(node.TCPPorts, result.Port)
+		}
+	}
 
 	node.LastPing = time.Now().Unix()
 	node.Status = true
@@ -204,15 +241,6 @@ func getNodes(node *toxNode, conn net.Conn) error {
 	return nil
 }
 
-func newNodeConn(node *toxNode) (net.Conn, error) {
-	conn, err := net.Dial("udp", fmt.Sprintf("%s:%d", node.Ipv4Address, node.Port))
-	if err != nil {
-		return nil, err
-	}
-	conn.SetReadDeadline(time.Now().Add(queryTimeout * time.Second))
-	return conn, nil
-}
-
 func getBootstrapInfo(node *toxNode, conn net.Conn) error {
 	payload := make([]byte, bootstrapInfoPacketLength)
 	payload[0] = bootstrapInfoPacketID
@@ -237,6 +265,62 @@ func getBootstrapInfo(node *toxNode, conn net.Conn) error {
 	return nil
 }
 
+func tryTCPHandshake(node *toxNode, conn net.Conn, port int) tcpHandshakeResult {
+	/* NOTE: conn is closed at the end of this function */
+	nodePublicKey, err := hex.DecodeString(node.PublicKey)
+	if err != nil {
+		return tcpHandshakeResult{port, err}
+	}
+
+	nonce := nextNonce()
+	baseNonce := nextNonce()
+	plain := make([]byte, len(crypto.PublicKey)+len(baseNonce))
+	tempCrypto, _ := NewCrypto()
+
+	copy(plain, tempCrypto.PublicKey)
+	copy(plain[len(tempCrypto.PublicKey):], baseNonce)
+	sharedKey := crypto.CreateSharedKey(nodePublicKey)
+	encrypted := encryptData(plain, sharedKey, nonce)[16:]
+
+	payload := make([]byte, tcpHandshakePacketLength)
+	copy(payload, crypto.PublicKey)
+	copy(payload[len(crypto.PublicKey):], nonce)
+	copy(payload[len(crypto.PublicKey)+len(nonce):], encrypted)
+	conn.Write(payload)
+
+	buffer := make([]byte, tcpHandshakeResponsePacketLength)
+	read, err := conn.Read(buffer)
+
+	var result tcpHandshakeResult
+
+	if err != nil {
+		result = tcpHandshakeResult{port, err}
+	} else if read != tcpHandshakeResponsePacketLength {
+		result = tcpHandshakeResult{
+			port,
+			errors.New("tcp handshake response has an incorrect length"),
+		}
+	} else {
+		result = tcpHandshakeResult{port, nil}
+	}
+
+	conn.Close()
+	return result
+}
+
+func newNodeConn(node *toxNode, port int, network string) (net.Conn, error) {
+	dialer := net.Dialer{}
+	dialer.Deadline = time.Now().Add(dialerTimeout * time.Second)
+
+	conn, err := dialer.Dial(network, fmt.Sprintf("%s:%d", node.Ipv4Address, port))
+	if err != nil {
+		return nil, err
+	}
+
+	conn.SetReadDeadline(time.Now().Add(queryTimeout * time.Second))
+	return conn, nil
+}
+
 func parseNode(nodeString string) *toxNode {
 	nodeString = stripSpaces(nodeString)
 	if !strings.HasPrefix(nodeString, "|") {
@@ -249,6 +333,7 @@ func parseNode(nodeString string) *toxNode {
 			strings.TrimSpace(lineParts[1]),
 			strings.TrimSpace(lineParts[2]),
 			port,
+			[]int{},
 			strings.TrimSpace(lineParts[4]),
 			strings.TrimSpace(lineParts[5]),
 			strings.TrimSpace(lineParts[6]),
