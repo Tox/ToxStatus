@@ -43,6 +43,7 @@ var (
 	crypto, _    = NewCrypto()
 	tcpPorts     = []int{443, 3389, 33445}
 	lowerFuncMap = template.FuncMap{"lower": strings.ToLower}
+	countries    map[string]string
 )
 
 //flags
@@ -72,6 +73,7 @@ type toxNode struct {
 	PublicKey      string `json:"public_key"`
 	Maintainer     string `json:"maintainer"`
 	Location       string `json:"location"`
+	LocationFull   string `json:"location_full"`
 	Status         bool   `json:"status"`
 	Version        string `json:"version"`
 	MOTD           string `json:"motd"`
@@ -88,11 +90,25 @@ func main() {
 		return
 	}
 
+	if err := loadCountries(); err != nil {
+		log.Fatalf("error loading countries.json: %s", err)
+	}
+
 	go probeLoop()
 
 	http.HandleFunc("/", handleHTTPRequest)
 	http.HandleFunc("/json", handleJSONRequest)
 	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", httpListenPort), nil))
+}
+
+func loadCountries() error {
+	bytes, err := ioutil.ReadFile("./assets/countries.json")
+	if err != nil {
+		return err
+	}
+
+	err = json.Unmarshal(bytes, &countries)
+	return err
 }
 
 func handleFlags() bool {
@@ -403,15 +419,16 @@ func parseNode(nodeString string) *toxNode {
 	}
 
 	lineParts := strings.Split(nodeString, "|")
-	if port, err := strconv.Atoi(strings.TrimSpace(lineParts[3])); err == nil && len(lineParts) == 8 {
+	if port, err := strconv.Atoi(lineParts[3]); err == nil && len(lineParts) == 8 {
 		node := toxNode{
-			strings.TrimSpace(lineParts[1]),
-			strings.TrimSpace(lineParts[2]),
+			lineParts[1],
+			lineParts[2],
 			port,
 			[]int{},
-			strings.TrimSpace(lineParts[4]),
-			strings.TrimSpace(lineParts[5]),
-			strings.TrimSpace(lineParts[6]),
+			lineParts[4],
+			lineParts[5],
+			lineParts[6],
+			countries[lineParts[6]],
 			false,
 			"",
 			"",

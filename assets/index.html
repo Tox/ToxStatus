@@ -33,7 +33,7 @@
 					<tbody>
 						{{range .Nodes}}
 						<tr class="collapsed" data-parent="#accordion" data-toggle="collapse" data-target="#collapse{{.PublicKey | html}}">
-							<td><img src="/img/flags/{{.Location | html | lower}}.png" title="{{.Location | html}}" style="position:relative;top:50%;transform:translateY(45%);"/></td>
+							<td><img src="/img/flags/{{.Location | html | lower}}.png" title="{{.LocationFull | html}}" style="position:relative;top:50%;transform:translateY(45%);"/></td>
 							<td>{{.Ipv4Address | html}}</td>
 							<td>{{.Ipv6Address | html}}</td>
 							<td>{{.Port | html}}</td>
