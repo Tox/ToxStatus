@@ -272,11 +272,11 @@ func probeNode(node *toxNode) error {
 	}
 
 	err = getBootstrapInfo(node, conn)
-	if err != nil {
+	/*if err != nil {
 		return err
-	}
-
+	}*/
 	conn.Close()
+
 	conn, err = newNodeConn(node, node.Port, "udp")
 	if err != nil {
 		return err
@@ -284,6 +284,7 @@ func probeNode(node *toxNode) error {
 
 	err = getNodes(node, conn)
 	if err != nil {
+		conn.Close()
 		return err
 	}
 	conn.Close()
