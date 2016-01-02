@@ -19,6 +19,8 @@ import (
 	"strings"
 	"text/template"
 	"time"
+
+	"github.com/GoKillers/libsodium-go/cryptobox"
 )
 
 const (
@@ -390,7 +392,12 @@ func tryTCPHandshake(node *toxNode, conn net.Conn, port int) tcpHandshakeResult 
 	} else if read != tcpHandshakeResponsePacketLength {
 		result = tcpHandshakeResult{
 			port,
-			errors.New("tcp handshake response has an incorrect length"),
+			errors.New("tcp handshake response had an invalid length"),
+		}
+	} else if isValidHandshakeResponse(buffer, baseNonce, sharedKey, tempCrypto) {
+		result = tcpHandshakeResult{
+			port,
+			errors.New("tcp handshake response is incorrect"),
 		}
 	} else {
 		result = tcpHandshakeResult{port, nil}
@@ -398,6 +405,30 @@ func tryTCPHandshake(node *toxNode, conn net.Conn, port int) tcpHandshakeResult 
 
 	conn.Close()
 	return result
+}
+
+func isValidHandshakeResponse(data []byte, baseNonce []byte, sharedKey []byte, tempPair *Crypto) bool {
+	nonceSize := cryptobox.CryptoBoxNonceBytes()
+	nonce := data[:nonceSize]
+	encrypted := data[nonceSize:]
+
+	decrypted := decryptData(encrypted, sharedKey, nonce)
+	if decrypted == nil {
+		return false
+	}
+
+	serverBaseNonce := decrypted[:nonceSize]
+	tempPublicKey := decrypted[nonceSize:]
+
+	if !bytes.Equal(tempPair.PublicKey, tempPublicKey) {
+		return false
+	}
+
+	if !bytes.Equal(baseNonce, serverBaseNonce) {
+		return false
+	}
+
+	return true
 }
 
 func newNodeConn(node *toxNode, port int, network string) (net.Conn, error) {
