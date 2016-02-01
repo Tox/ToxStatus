@@ -44,8 +44,11 @@ var (
 	nodesList    = list.New()
 	crypto, _    = NewCrypto()
 	tcpPorts     = []int{443, 3389, 33445}
-	lowerFuncMap = template.FuncMap{"lower": strings.ToLower}
-	countries    map[string]string
+	lowerFuncMap = template.FuncMap{
+		"lower": strings.ToLower,
+		"inc":   increment,
+	}
+	countries map[string]string
 )
 
 //flags

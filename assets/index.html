@@ -70,7 +70,14 @@
 										<dd>-</dd>
 										{{else}}
 										<dd>
-											{{range .TCPPorts}} {{.}}, {{end}}
+											{{$ports := .TCPPorts}}
+											{{range $i, $port := $ports}}
+												{{if eq ($ports | len) ($i | inc)}}
+													{{$port}}
+												{{else}}
+													{{$port}},
+												{{end}}
+											{{end}}
 										</dd>
 										{{end}}
 									</dl>

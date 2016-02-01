@@ -64,3 +64,7 @@ func contains(ints []int, q int) bool {
 	}
 	return false
 }
+
+func increment(i int) int {
+	return i + 1
+}
