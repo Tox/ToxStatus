@@ -43,9 +43,13 @@
 							<td>{{.Port | html}}</td>
 							<td>{{.PublicKey | html}}</td>
 							<td>{{.Maintainer | html}}</td>
-							{{if .Status}}
+							{{if .UDPStatus}}
 							<td>
 								<span style="color:green">ONLINE</span>
+							</td>
+							{{else if .TCPStatus}}
+							<td>
+								<span style="color:orange">ONLINE</span>
 							</td>
 							{{else}}
 							<td>
@@ -97,6 +101,14 @@
 									<dl>
 										<dt>MOTD</dt>
 										<dd style="white-space: pre-wrap;word-wrap: break-word;">{{.MOTD | html}}</dd>
+									</dl>
+								</div>
+								{{end}}
+								{{if and (not .UDPStatus) (.TCPStatus)}}
+								<div class="col-md-4">
+									<dl>
+										<dt>Info</dt>
+										<dd>Unable connect to this node through UDP. A TCP relay seems to be up and running, however.</dd>
 									</dl>
 								</div>
 								{{end}}

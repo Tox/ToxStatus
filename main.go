@@ -40,11 +40,11 @@ const (
 )
 
 var (
-	lastScan     int64
-	nodesList    = list.New()
-	crypto, _    = NewCrypto()
-	tcpPorts     = []int{443, 3389, 33445}
-	lowerFuncMap = template.FuncMap{
+	lastScan  int64
+	nodesList = list.New()
+	crypto, _ = NewCrypto()
+	tcpPorts  = []int{443, 3389, 33445}
+	funcMap   = template.FuncMap{
 		"lower": strings.ToLower,
 		"inc":   increment,
 	}
@@ -79,7 +79,8 @@ type toxNode struct {
 	Maintainer     string `json:"maintainer"`
 	Location       string `json:"location"`
 	LocationFull   string `json:"location_full"`
-	Status         bool   `json:"status"`
+	UDPStatus      bool   `json:"status_udp"`
+	TCPStatus      bool   `json:"status_tcp"`
 	Version        string `json:"version"`
 	MOTD           string `json:"motd"`
 	LastPing       int64  `json:"last_ping"`
@@ -173,7 +174,7 @@ func handleHTTPRequest(w http.ResponseWriter, r *http.Request) {
 
 func renderMainPage(w http.ResponseWriter, urlPath string) {
 	tmpl, err := template.New("index.html").
-		Funcs(lowerFuncMap).
+		Funcs(funcMap).
 		ParseFiles(path.Join("./assets/", string(urlPath)))
 
 	if err != nil {
@@ -210,14 +211,18 @@ func probeLoop() {
 				node, _ := e.Value.(*toxNode)
 				go func() {
 					err := probeNode(node)
-					if err == nil {
-						ports := tcpPorts
-						if !contains(tcpPorts, node.Port) {
-							ports = append(ports, node.Port)
-						}
 
-						probeNodeTCPPorts(node, ports)
+					ports := tcpPorts
+					if !contains(tcpPorts, node.Port) {
+						ports = append(ports, node.Port)
 					}
+
+					probeNodeTCPPorts(node, ports)
+
+					if node.UDPStatus || node.TCPStatus {
+						node.LastPing = time.Now().Unix()
+					}
+
 					c <- err
 				}()
 			}
@@ -259,6 +264,8 @@ func probeNodeTCPPorts(node *toxNode, ports []int) {
 			node.TCPPorts = append(node.TCPPorts, result.Port)
 		}
 	}
+
+	node.TCPStatus = len(node.TCPPorts) > 0
 }
 
 func probeNodeTCP(node *toxNode) error {
@@ -294,8 +301,7 @@ func probeNode(node *toxNode) error {
 	}
 	conn.Close()
 
-	node.LastPing = time.Now().Unix()
-	node.Status = true
+	node.UDPStatus = true
 	return nil
 }
 
@@ -464,6 +470,7 @@ func parseNode(nodeString string) *toxNode {
 			lineParts[5],
 			lineParts[6],
 			countries[lineParts[6]],
+			false,
 			false,
 			"",
 			"",
