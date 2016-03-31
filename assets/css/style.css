@@ -26,7 +26,6 @@
   border-top: 0;
 }
 
-.table-collapse > tbody > tr > td:nth-child(5),
 .table-collapse > tbody > tr > td:nth-child(5) {
   font-family: monospace;
 }
