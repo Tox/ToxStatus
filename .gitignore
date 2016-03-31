@@ -3,6 +3,9 @@
 *.a
 *.so
 
+# Binary
+ToxStatus
+
 # Folders
 _obj
 _test
