@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"sort"
 	"strconv"
 	"strings"
 	"text/template"
@@ -182,6 +183,8 @@ func renderMainPage(w http.ResponseWriter, urlPath string) {
 		log.Printf("Internal server error while trying to serve index: %s", err.Error())
 	} else {
 		nodes := nodesListToSlice(nodesList)
+		sort.Stable(nodeSlice(nodes))
+
 		response := toxStatus{lastScan, time.Unix(lastScan, 0).String(), nodes}
 		tmpl.Execute(w, response)
 	}
@@ -189,8 +192,9 @@ func renderMainPage(w http.ResponseWriter, urlPath string) {
 
 func handleJSONRequest(w http.ResponseWriter, r *http.Request) {
 	nodes := nodesListToSlice(nodesList)
-	response := toxStatus{lastScan, time.Unix(lastScan, 0).String(), nodes}
+	sort.Stable(nodeSlice(nodes))
 
+	response := toxStatus{lastScan, time.Unix(lastScan, 0).String(), nodes}
 	bytes, err := json.Marshal(response)
 	if err != nil {
 		http.Error(w, http.StatusText(500), 500)
@@ -527,4 +531,26 @@ func getOldNode(publicKey string) *toxNode {
 		}
 	}
 	return nil
+}
+
+type nodeSlice []toxNode
+
+func (c nodeSlice) Len() int {
+	return len(c)
+}
+
+func (c nodeSlice) Swap(i, j int) {
+	c[i], c[j] = c[j], c[i]
+}
+
+func (c nodeSlice) Less(i, j int) bool {
+	if c[i].UDPStatus != c[j].UDPStatus {
+		return c[i].UDPStatus
+	}
+
+	if c[i].TCPStatus != c[j].TCPStatus {
+		return c[i].TCPStatus
+	}
+
+	return false
 }
