@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"container/list"
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
@@ -42,12 +41,14 @@ const (
 
 var (
 	lastScan  int64
-	nodesList = list.New()
+	nodes     = []*toxNode{}
 	crypto, _ = NewCrypto()
 	tcpPorts  = []int{443, 3389, 33445}
 	funcMap   = template.FuncMap{
 		"lower": strings.ToLower,
 		"inc":   increment,
+		"stamp": timeToString,
+		"loc":   getLocString,
 	}
 	countries map[string]string
 )
@@ -66,26 +67,24 @@ type tcpHandshakeResult struct {
 }
 
 type toxStatus struct {
-	LastScan       int64     `json:"last_scan"`
-	LastScanString string    `json:"last_scan_string"`
-	Nodes          []toxNode `json:"nodes"`
+	LastScan       int64      `json:"last_scan"`
+	LastScanString string     `json:"last_scan_string"`
+	Nodes          []*toxNode `json:"nodes"`
 }
 
 type toxNode struct {
-	Ipv4Address    string `json:"ipv4"`
-	Ipv6Address    string `json:"ipv6"`
-	Port           int    `json:"port"`
-	TCPPorts       []int  `json:"tcp_ports"`
-	PublicKey      string `json:"public_key"`
-	Maintainer     string `json:"maintainer"`
-	Location       string `json:"location"`
-	LocationFull   string `json:"location_full"`
-	UDPStatus      bool   `json:"status_udp"`
-	TCPStatus      bool   `json:"status_tcp"`
-	Version        string `json:"version"`
-	MOTD           string `json:"motd"`
-	LastPing       int64  `json:"last_ping"`
-	LastPingString string `json:"last_ping_string"`
+	Ipv4Address string `json:"ipv4"`
+	Ipv6Address string `json:"ipv6"`
+	Port        int    `json:"port"`
+	TCPPorts    []int  `json:"tcp_ports"`
+	PublicKey   string `json:"public_key"`
+	Maintainer  string `json:"maintainer"`
+	Location    string `json:"location"`
+	UDPStatus   bool   `json:"status_udp"`
+	TCPStatus   bool   `json:"status_tcp"`
+	Version     string `json:"version"`
+	MOTD        string `json:"motd"`
+	LastPing    int64  `json:"last_ping"`
 }
 
 func main() {
@@ -182,18 +181,12 @@ func renderMainPage(w http.ResponseWriter, urlPath string) {
 		http.Error(w, http.StatusText(500), 500)
 		log.Printf("Internal server error while trying to serve index: %s", err.Error())
 	} else {
-		nodes := nodesListToSlice(nodesList)
-		sort.Stable(nodeSlice(nodes))
-
 		response := toxStatus{lastScan, time.Unix(lastScan, 0).String(), nodes}
 		tmpl.Execute(w, response)
 	}
 }
 
 func handleJSONRequest(w http.ResponseWriter, r *http.Request) {
-	nodes := nodesListToSlice(nodesList)
-	sort.Stable(nodeSlice(nodes))
-
 	response := toxStatus{lastScan, time.Unix(lastScan, 0).String(), nodes}
 	bytes, err := json.Marshal(response)
 	if err != nil {
@@ -206,14 +199,13 @@ func handleJSONRequest(w http.ResponseWriter, r *http.Request) {
 
 func probeLoop() {
 	for {
-		nodes, err := parseNodes()
+		nodesList, err := parseNodes()
 		if err != nil {
 			log.Printf("Error while trying to parse nodes: %s", err.Error())
 		} else {
 			c := make(chan error)
-			for e := nodes.Front(); e != nil; e = e.Next() {
-				node, _ := e.Value.(*toxNode)
-				go func() {
+			for _, node := range nodesList {
+				go func(node *toxNode) {
 					err := probeNode(node)
 
 					ports := tcpPorts
@@ -228,17 +220,18 @@ func probeLoop() {
 					}
 
 					c <- err
-				}()
+				}(node)
 			}
 
-			for i := 0; i < nodes.Len(); i++ {
+			for _ = range nodesList {
 				err = <-c
 				if err != nil {
 					log.Printf("error: %s", err.Error())
 				}
 			}
 
-			nodesList = nodes
+			sort.Stable(nodeSlice(nodesList))
+			nodes = nodesList
 			lastScan = time.Now().Unix()
 		}
 
@@ -473,13 +466,11 @@ func parseNode(nodeString string) *toxNode {
 			lineParts[4],
 			lineParts[5],
 			lineParts[6],
-			countries[lineParts[6]],
 			false,
 			false,
 			"",
 			"",
 			0,
-			"Never",
 		}
 
 		if node.Ipv6Address == "NONE" {
@@ -492,14 +483,14 @@ func parseNode(nodeString string) *toxNode {
 	return nil
 }
 
-func parseNodes() (*list.List, error) {
+func parseNodes() ([]*toxNode, error) {
 	res, err := http.Get(wikiURI)
 	if err != nil {
 		return nil, err
 	}
 	defer res.Body.Close()
 
-	nodes := list.New()
+	nodesList := []*toxNode{}
 	content, err := ioutil.ReadAll(res.Body)
 	if err != nil {
 		return nil, err
@@ -515,17 +506,15 @@ func parseNodes() (*list.List, error) {
 		oldNode := getOldNode(node.PublicKey)
 		if oldNode != nil { //transfer last ping info
 			node.LastPing = oldNode.LastPing
-			node.LastPingString = oldNode.LastPingString
 		}
 
-		nodes.PushBack(node)
+		nodesList = append(nodesList, node)
 	}
-	return nodes, nil
+	return nodesList, nil
 }
 
 func getOldNode(publicKey string) *toxNode {
-	for e := nodesList.Front(); e != nil; e = e.Next() {
-		node, _ := e.Value.(*toxNode)
+	for _, node := range nodes {
 		if node.PublicKey == publicKey {
 			return node
 		}
@@ -533,7 +522,7 @@ func getOldNode(publicKey string) *toxNode {
 	return nil
 }
 
-type nodeSlice []toxNode
+type nodeSlice []*toxNode
 
 func (c nodeSlice) Len() int {
 	return len(c)
