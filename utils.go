@@ -37,12 +37,16 @@ func getSimpleDurationFormat(duration time.Duration) string {
 	return format
 }
 
-func timeToString(stamp int64) string {
+func getTimeSinceString(stamp int64) string {
 	if stamp == 0 {
 		return "Never"
 	}
 
 	return getSimpleDurationFormat(time.Now().Sub(time.Unix(stamp, 0)))
+}
+
+func getTimeString(stamp int64) string {
+	return time.Unix(stamp, 0).String()
 }
 
 func contains(ints []int, q int) bool {

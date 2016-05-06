@@ -47,8 +47,9 @@ var (
 	funcMap   = template.FuncMap{
 		"lower": strings.ToLower,
 		"inc":   increment,
-		"stamp": timeToString,
+		"since": getTimeSinceString,
 		"loc":   getLocString,
+		"time":  getTimeString,
 	}
 	countries map[string]string
 )
@@ -67,9 +68,8 @@ type tcpHandshakeResult struct {
 }
 
 type toxStatus struct {
-	LastScan       int64      `json:"last_scan"`
-	LastScanString string     `json:"last_scan_string"`
-	Nodes          []*toxNode `json:"nodes"`
+	LastScan int64      `json:"last_scan"`
+	Nodes    []*toxNode `json:"nodes"`
 }
 
 type toxNode struct {
@@ -181,13 +181,13 @@ func renderMainPage(w http.ResponseWriter, urlPath string) {
 		http.Error(w, http.StatusText(500), 500)
 		log.Printf("Internal server error while trying to serve index: %s", err.Error())
 	} else {
-		response := toxStatus{lastScan, time.Unix(lastScan, 0).String(), nodes}
+		response := toxStatus{lastScan, nodes}
 		tmpl.Execute(w, response)
 	}
 }
 
 func handleJSONRequest(w http.ResponseWriter, r *http.Request) {
-	response := toxStatus{lastScan, time.Unix(lastScan, 0).String(), nodes}
+	response := toxStatus{lastScan, nodes}
 	bytes, err := json.Marshal(response)
 	if err != nil {
 		http.Error(w, http.StatusText(500), 500)

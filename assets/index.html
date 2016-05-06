@@ -68,7 +68,7 @@
 								<div class="col-md-2">
 									<dl>
 										<dt>Last Ping</dt>
-										<dd>{{.LastPing | stamp | html}}</dd>
+										<dd>{{.LastPing | since | html}}</dd>
 									</dl>
 								</div>
 								<div class="col-md-2">
@@ -124,7 +124,7 @@
 		<div class="container">
 			<a class="text-muted pull-left" href="/json">JSON</a>
 			<a class="text-muted pull-right" target="_blank" href="https://github.com/Tox/ToxStatus">I'm open source!</a>
-			<p class="text-muted text-center">Last successful scan: {{.LastScanString}}</p>
+			<p class="text-muted text-center">Last successful scan: {{.LastScan | time | html}}</p>
 		</div>
 	</footer>
 	<script src="js/jquery.min.js"></script>
