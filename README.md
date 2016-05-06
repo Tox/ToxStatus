@@ -16,11 +16,3 @@ Usage of ./ToxStatus:
   -port int
         port to probe (default 33445)
 ```
-
-# Deploying
-Using the included Dockerfile in the 'docker' folder:
-
-```
-docker build -t toxstatus .
-docker run -d --restart=always -p 8081:8081 --name toxstatus toxstatus
-```
