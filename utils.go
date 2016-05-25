@@ -51,15 +51,6 @@ func getTimeString(stamp int64) string {
 	return time.Unix(stamp, 0).String()
 }
 
-func contains(ints []int, q int) bool {
-	for _, i := range ints {
-		if i == q {
-			return true
-		}
-	}
-	return false
-}
-
 func increment(i int) int {
 	return i + 1
 }

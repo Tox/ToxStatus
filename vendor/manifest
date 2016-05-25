@@ -1,0 +1,85 @@
+{
+	"version": 0,
+	"dependencies": [
+		{
+			"importpath": "github.com/Impyy/tox4go/bootstrap",
+			"repository": "https://github.com/Impyy/tox4go",
+			"revision": "5bc69ab94c144c8acc5f482cb7718054c8c9b071",
+			"branch": "master",
+			"path": "/bootstrap",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/Impyy/tox4go/crypto",
+			"repository": "https://github.com/Impyy/tox4go",
+			"revision": "5bc69ab94c144c8acc5f482cb7718054c8c9b071",
+			"branch": "master",
+			"path": "/crypto",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/Impyy/tox4go/dht",
+			"repository": "https://github.com/Impyy/tox4go",
+			"revision": "5bc69ab94c144c8acc5f482cb7718054c8c9b071",
+			"branch": "master",
+			"path": "/dht",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/Impyy/tox4go/relay",
+			"repository": "https://github.com/Impyy/tox4go",
+			"revision": "5bc69ab94c144c8acc5f482cb7718054c8c9b071",
+			"branch": "master",
+			"path": "/relay",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/Impyy/tox4go/transport",
+			"repository": "https://github.com/Impyy/tox4go",
+			"revision": "5bc69ab94c144c8acc5f482cb7718054c8c9b071",
+			"branch": "master",
+			"path": "/transport",
+			"notests": true
+		},
+		{
+			"importpath": "golang.org/x/crypto/curve25519",
+			"repository": "https://go.googlesource.com/crypto",
+			"revision": "b6789ab629056511030d652d851e7dc10c9e9c9e",
+			"branch": "master",
+			"path": "/curve25519",
+			"notests": true
+		},
+		{
+			"importpath": "golang.org/x/crypto/nacl/box",
+			"repository": "https://go.googlesource.com/crypto",
+			"revision": "b6789ab629056511030d652d851e7dc10c9e9c9e",
+			"branch": "master",
+			"path": "/nacl/box",
+			"notests": true
+		},
+		{
+			"importpath": "golang.org/x/crypto/nacl/secretbox",
+			"repository": "https://go.googlesource.com/crypto",
+			"revision": "b6789ab629056511030d652d851e7dc10c9e9c9e",
+			"branch": "master",
+			"path": "/nacl/secretbox",
+			"notests": true
+		},
+		{
+			"importpath": "golang.org/x/crypto/poly1305",
+			"repository": "https://go.googlesource.com/crypto",
+			"revision": "b6789ab629056511030d652d851e7dc10c9e9c9e",
+			"branch": "master",
+			"path": "/poly1305",
+			"notests": true
+		},
+		{
+			"importpath": "golang.org/x/crypto/salsa20/salsa",
+			"repository": "https://go.googlesource.com/crypto",
+			"revision": "b6789ab629056511030d652d851e7dc10c9e9c9e",
+			"branch": "master",
+			"path": "/salsa20/salsa",
+			"notests": true
+		}
+	]
+}

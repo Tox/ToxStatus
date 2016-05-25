@@ -2,545 +2,477 @@ package main
 
 import (
 	"bytes"
-	"encoding/binary"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
-	"flag"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
 	"os"
-	"path"
+	"os/signal"
 	"sort"
-	"strconv"
-	"strings"
-	"text/template"
+	"sync"
 	"time"
 
-	"github.com/GoKillers/libsodium-go/cryptobox"
+	"github.com/Impyy/tox4go/bootstrap"
+	"github.com/Impyy/tox4go/crypto"
+	"github.com/Impyy/tox4go/dht"
+	"github.com/Impyy/tox4go/dht/ping"
+	"github.com/Impyy/tox4go/relay"
+	"github.com/Impyy/tox4go/transport"
 )
 
 const (
-	httpListenPort                   = 8081
-	refreshRate                      = 60 //in seconds
-	wikiURI                          = "https://wiki.tox.chat/users/nodes?do=export_raw"
-	maxUDPPacketSize                 = 2048
-	getNodesPacketID                 = 2
-	sendNodesIpv6PacketID            = 4
-	bootstrapInfoPacketID            = 240
-	bootstrapInfoPacketLength        = 78
-	tcpHandshakePacketLength         = 128
-	tcpHandshakeResponsePacketLength = 96
-	maxMOTDLength                    = 256
-	queryTimeout                     = 4 //in seconds
-	dialerTimeout                    = 4 //in seconds
+	probeRate   = 1 * time.Minute
+	refreshRate = 5 * time.Minute
 )
 
 var (
-	lastScan  int64
-	nodes     = []*toxNode{}
-	crypto, _ = NewCrypto()
-	tcpPorts  = []int{443, 3389, 33445}
-	funcMap   = template.FuncMap{
-		"lower": strings.ToLower,
-		"inc":   increment,
-		"since": getTimeSinceString,
-		"loc":   getLocString,
-		"time":  getTimeString,
+	lastScan     int64
+	lastRefresh  int64
+	udpTransport *transport.UDPTransport
+	tcpTransport *transport.TCPTransport
+	ident        *dht.Ident
+	nodes        = []*toxNode{}
+	nodesMutex   = sync.Mutex{}
+	tcpPorts     = []int{443, 3389, 33445}
+	pings        = new(ping.Collection)
+	pingsMutex   = sync.Mutex{}
+)
+
+func init() {
+	var err error
+	ident, err = dht.NewIdent()
+	if err != nil {
+		panic(err)
 	}
-	countries map[string]string
-)
 
-//flags
-var (
-	networkFlag = flag.String("net", "udp", "network type, either 'udp' or 'tcp'")
-	ipFlag      = flag.String("ip", "127.0.0.1", "ip address to probe, ipv4 and ipv6 are both supported")
-	portFlag    = flag.Int("port", 33445, "port to probe")
-	keyFlag     = flag.String("key", "", "public key of the node")
-)
+	udpTransport, err = transport.NewUDPTransport("udp", ":33450")
+	if err != nil {
+		panic(err)
+	}
+	udpTransport.Handle(dht.PacketIDSendNodes, handleSendNodesPacket)
+	udpTransport.Handle(bootstrap.PacketIDBootstrapInfo, handleBootstrapInfoPacket)
 
-type tcpHandshakeResult struct {
-	Port  int
-	Error error
-}
-
-type toxStatus struct {
-	LastScan int64      `json:"last_scan"`
-	Nodes    []*toxNode `json:"nodes"`
-}
-
-type toxNode struct {
-	Ipv4Address string `json:"ipv4"`
-	Ipv6Address string `json:"ipv6"`
-	Port        int    `json:"port"`
-	TCPPorts    []int  `json:"tcp_ports"`
-	PublicKey   string `json:"public_key"`
-	Maintainer  string `json:"maintainer"`
-	Location    string `json:"location"`
-	UDPStatus   bool   `json:"status_udp"`
-	TCPStatus   bool   `json:"status_tcp"`
-	Version     string `json:"version"`
-	MOTD        string `json:"motd"`
-	LastPing    int64  `json:"last_ping"`
+	/*tcpTransport, err = transport.NewTCPTransport("tcp", ":33450")
+	if err != nil {
+		panic(err)
+	}*/
 }
 
 func main() {
-	if crypto == nil {
-		log.Fatalf("Could not generate keypair")
-	}
-
-	if handleFlags() {
+	if parseFlags() {
 		return
 	}
 
 	if err := loadCountries(); err != nil {
-		log.Fatalf("error loading countries.json: %s", err)
+		log.Fatalf("error loading countries.json: %s", err.Error())
 	}
 
-	go probeLoop()
+	//handle stop signal
+	interruptChan := make(chan os.Signal)
+	signal.Notify(interruptChan, os.Interrupt)
 
-	http.HandleFunc("/", handleHTTPRequest)
-	http.HandleFunc("/json", handleJSONRequest)
-	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", httpListenPort), nil))
+	//setup http server
+	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", httpListenPort))
+	if err != nil {
+		log.Fatalf("error in net.Listen: %s", err.Error())
+	}
+	serveMux := http.NewServeMux()
+	serveMux.HandleFunc("/", handleHTTPRequest)
+	serveMux.HandleFunc("/json", handleJSONRequest)
+	go func() {
+		err := http.Serve(listener, serveMux)
+		if err != nil {
+			log.Printf("http server error: %s\n", err.Error())
+			interruptChan <- os.Interrupt
+		}
+	}()
+
+	//listen for tox packets
+	go func() {
+		err := udpTransport.Listen()
+		if err != nil {
+			log.Printf("udp transport error: %s\n", err.Error())
+			interruptChan <- os.Interrupt
+		}
+	}()
+	//go tcpTransport.Listen()
+
+	err = refreshNodes()
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+	probeNodes()
+
+	probeTicker := time.NewTicker(probeRate)
+	refreshTicker := time.NewTicker(refreshRate)
+	updateTicker := time.NewTicker(30 * time.Second)
+	run := true
+
+	for run {
+		select {
+		case <-interruptChan:
+			fmt.Printf("killing routines\n")
+			probeTicker.Stop()
+			refreshTicker.Stop()
+			updateTicker.Stop()
+			udpTransport.Stop()
+			//tcpTransport.Stop()
+			listener.Close()
+			run = false
+		case <-probeTicker.C:
+			// we want an empty ping list at the start of every probe
+			pingsMutex.Lock()
+			pings.Clear(false)
+			pingsMutex.Unlock()
+
+			nodesMutex.Lock()
+			err := probeNodes()
+			nodesMutex.Unlock()
+			if err != nil {
+				log.Printf("error while trying to probe nodes: %s", err.Error())
+			}
+		case <-refreshTicker.C:
+			nodesMutex.Lock()
+			err := refreshNodes()
+			nodesMutex.Unlock()
+			if err != nil {
+				log.Printf("error while trying to refresh nodes: %s", err.Error())
+			}
+		case <-updateTicker.C:
+			pingsMutex.Lock()
+			pings.Clear(true)
+			pingsMutex.Unlock()
+
+			nodesMutex.Lock()
+			for _, node := range nodes {
+				if time.Now().Sub(time.Unix(node.LastPing, 0)) > time.Minute*2 {
+					node.UDPStatus = false
+				}
+			}
+			sort.Stable(nodeSlice(nodes))
+			nodesMutex.Unlock()
+		}
+	}
 }
 
-func loadCountries() error {
-	bytes, err := ioutil.ReadFile("./assets/countries.json")
+func refreshNodes() error {
+	nodesList, err := parseNodes()
 	if err != nil {
 		return err
 	}
 
-	err = json.Unmarshal(bytes, &countries)
-	return err
-}
-
-func handleFlags() bool {
-	if len(os.Args) < 2 {
-		return false
-	}
-
-	flag.Parse()
-
-	if len(*keyFlag) != 64 {
-		log.Fatalln("error: public key must have a lenght of 64 hex characters")
-	}
-
-	node := toxNode{}
-	node.Ipv4Address = *ipFlag //HACK: ipv6 addresses will also end up here
-	node.PublicKey = *keyFlag
-	node.Port = *portFlag
-
-	if *networkFlag == "udp" {
-		err := probeNode(&node)
-		if err == nil {
-			log.Println("success: this node appears to be online!")
-		} else {
-			log.Printf("error: %s", err.Error())
-			log.Println("fail: this node appears to be offline!")
+	for _, freshNode := range nodesList {
+		found := false
+		for i, node := range nodes {
+			if freshNode.PublicKey == node.PublicKey {
+				freshNode.LastPing = node.LastPing
+				freshNode.UDPStatus = node.UDPStatus
+				freshNode.TCPStatus = node.TCPStatus
+				freshNode.TCPPorts = node.TCPPorts
+				freshNode.MOTD = node.MOTD
+				freshNode.Version = node.Version
+				nodes[i] = freshNode
+				found = true
+				break
+			}
 		}
-	} else if *networkFlag == "tcp" {
-		err := probeNodeTCP(&node)
-		if err == nil {
-			log.Println("success: this relay appears to be online!")
-		} else {
-			log.Printf("error: %s", err.Error())
-			log.Println("fail: this relay appears to be offline!")
+
+		if !found {
+			nodes = append(nodes, freshNode)
 		}
-	} else {
-		log.Fatalf("error: unsupported network specified: %s", *networkFlag)
 	}
+	lastRefresh = time.Now().Unix()
 
-	return true
+	sort.Stable(nodeSlice(nodes))
+	return nil
 }
 
-func handleHTTPRequest(w http.ResponseWriter, r *http.Request) {
-	urlPath := r.URL.Path[1:]
-	if r.URL.Path == "/" {
-		renderMainPage(w, "index.html")
-		return
-	}
-
-	//TODO: make this more efficient
-	data, err := ioutil.ReadFile(path.Join("./assets/", string(urlPath)))
-	if err != nil {
-		http.Error(w, http.StatusText(404), 404)
-	} else {
-		w.Header().Set("Content-Type", mimeTypeByExtension(urlPath))
-		w.Write(data)
-	}
-}
-
-func renderMainPage(w http.ResponseWriter, urlPath string) {
-	tmpl, err := template.New("index.html").
-		Funcs(funcMap).
-		ParseFiles(path.Join("./assets/", string(urlPath)))
-
-	if err != nil {
-		http.Error(w, http.StatusText(500), 500)
-		log.Printf("Internal server error while trying to serve index: %s", err.Error())
-	} else {
-		response := toxStatus{lastScan, nodes}
-		tmpl.Execute(w, response)
-	}
-}
-
-func handleJSONRequest(w http.ResponseWriter, r *http.Request) {
-	response := toxStatus{lastScan, nodes}
-	bytes, err := json.Marshal(response)
-	if err != nil {
-		http.Error(w, http.StatusText(500), 500)
-		return
-	}
-
-	w.Write(bytes)
-}
-
-func probeLoop() {
-	for {
-		nodesList, err := parseNodes()
+func probeNodes() error {
+	for _, node := range nodes {
+		err := getBootstrapInfo(node)
 		if err != nil {
-			log.Printf("Error while trying to parse nodes: %s", err.Error())
-		} else {
-			c := make(chan error)
-			for _, node := range nodesList {
-				go func(node *toxNode) {
-					err := probeNode(node)
-
-					ports := tcpPorts
-					if !contains(tcpPorts, node.Port) {
-						ports = append(ports, node.Port)
-					}
-
-					probeNodeTCPPorts(node, ports)
-
-					if node.UDPStatus || node.TCPStatus {
-						node.LastPing = time.Now().Unix()
-					}
-
-					c <- err
-				}(node)
-			}
-
-			for _ = range nodesList {
-				err = <-c
-				if err != nil {
-					log.Printf("error: %s", err.Error())
-				}
-			}
-
-			sort.Stable(nodeSlice(nodesList))
-			nodes = nodesList
-			lastScan = time.Now().Unix()
+			fmt.Println(err.Error())
 		}
 
-		time.Sleep(refreshRate * time.Second)
+		err = getNodes(node)
+		if err != nil {
+			fmt.Println(err.Error())
+		}
+
+		ports := tcpPorts
+		exists := false
+		for _, i := range ports {
+			if i == node.Port {
+				exists = true
+			}
+		}
+		if !exists {
+			ports = append(ports, node.Port)
+		}
+
+		go probeNodeTCPPorts(node, ports)
 	}
+
+	lastScan = time.Now().Unix()
+	return nil
 }
 
 func probeNodeTCPPorts(node *toxNode, ports []int) {
-	c := make(chan tcpHandshakeResult)
+	c := make(chan int)
 	for _, port := range ports {
 		go func(p int) {
-			conn, err := newNodeConn(node, p, "tcp")
+			conn, err := connectTCP(node, p)
 			if err != nil {
 				fmt.Printf("%s\n", err.Error())
-				c <- tcpHandshakeResult{p, err}
+				c <- -1
 			} else {
-				c <- tryTCPHandshake(node, conn, p)
+				err := tcpHandshake(node, conn)
+				if err != nil {
+					fmt.Printf("%s\n", err.Error())
+					c <- -1
+				} else {
+					c <- p
+				}
 			}
 		}(port)
 	}
 
+	node.TCPPorts = []int{}
+
 	for i := 0; i < len(ports); i++ {
-		result := <-c
-		if result.Error != nil {
-			fmt.Printf("%s\n", result.Error.Error())
-		} else {
-			node.TCPPorts = append(node.TCPPorts, result.Port)
+		port := <-c
+		if port != -1 {
+			fmt.Printf("tcp port for %s: %d\n", node.Maintainer, port)
+			node.TCPPorts = append(node.TCPPorts, port)
 		}
 	}
 
 	node.TCPStatus = len(node.TCPPorts) > 0
 }
 
-func probeNodeTCP(node *toxNode) error {
-	conn, err := newNodeConn(node, node.Port, "tcp")
+func tcpHandshake(node *toxNode, conn *net.TCPConn) error {
+	nodePublicKey := new([crypto.PublicKeySize]byte)
+	decPublicKey, err := hex.DecodeString(node.PublicKey)
+	if err != nil {
+		return err
+	}
+	copy(nodePublicKey[:], decPublicKey)
+
+	relayConn, err := relay.NewConnection()
 	if err != nil {
 		return err
 	}
 
-	return tryTCPHandshake(node, conn, node.Port).Error
-}
-
-func probeNode(node *toxNode) error {
-	conn, err := newNodeConn(node, node.Port, "udp")
+	req, err := relayConn.StartHandshake()
 	if err != nil {
 		return err
 	}
 
-	err = getBootstrapInfo(node, conn)
-	/*if err != nil {
-		return err
-	}*/
-	conn.Close()
-
-	conn, err = newNodeConn(node, node.Port, "udp")
+	reqBytes, err := req.MarshalBinary()
 	if err != nil {
 		return err
 	}
 
-	err = getNodes(node, conn)
-	if err != nil {
-		conn.Close()
-		return err
-	}
-	conn.Close()
-
-	node.UDPStatus = true
-	return nil
-}
-
-func getNodes(node *toxNode, conn net.Conn) error {
-	nodePublicKey, err := hex.DecodeString(node.PublicKey)
+	encryptedReqBytes, nonce, err := ident.EncryptBlob(reqBytes, nodePublicKey)
 	if err != nil {
 		return err
 	}
 
-	plain := make([]byte, len(crypto.PublicKey)+8)
-	copy(plain, crypto.PublicKey)
-	copy(plain[len(crypto.PublicKey):], nextBytes(8)) //ping id
+	reqPacket := &relay.HandshakeRequestPacket{
+		PublicKey: ident.PublicKey,
+		Nonce:     nonce,
+		Payload:   encryptedReqBytes,
+	}
 
-	nonce := nextNonce()
-	sharedKey := crypto.CreateSharedKey(nodePublicKey)
-	encrypted := encryptData(plain, sharedKey, nonce)[16:]
-
-	payload := make([]byte, 1+len(crypto.PublicKey)+len(nonce)+len(encrypted))
-	payload[0] = getNodesPacketID
-	copy(payload[1:], crypto.PublicKey)
-	copy(payload[1+len(crypto.PublicKey):], nonce)
-	copy(payload[1+len(crypto.PublicKey)+len(nonce):], encrypted)
-	conn.Write(payload)
-
-	buffer := make([]byte, maxUDPPacketSize)
-	_, err = conn.Read(buffer)
-
+	reqPacketBytes, err := reqPacket.MarshalBinary()
 	if err != nil {
 		return err
-	} /*else if payload[0] != sendNodesIpv6PacketID {
-		return fmt.Errorf("packet id: %d is not a sendnodesipv6 packet", payload[0])
 	}
 
-	right now we're happy if a node responds to our 'getnodes' request, without even validating the response
-	this needs some more work
-
-	on a side note: it looks like nodes are sending a 'getnodes' packet before 'sendnodesipv6',
-	*/
-
-	return nil
-}
-
-func getBootstrapInfo(node *toxNode, conn net.Conn) error {
-	payload := make([]byte, bootstrapInfoPacketLength)
-	payload[0] = bootstrapInfoPacketID
-	conn.Write(payload)
-
-	buffer := make([]byte, 1+4+maxMOTDLength)
-	read, err := conn.Read(buffer)
-
+	conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	_, err = conn.Write(reqPacketBytes)
 	if err != nil {
 		return err
-	} else if buffer[0] != bootstrapInfoPacketID {
-		return fmt.Errorf("packet id: %d is not a bootstrap info packet", buffer[0])
 	}
 
-	buffer = buffer[:read]
-	if len(buffer) < 1+4 {
-		return errors.New("bootstrap info packet too small")
-	}
-
-	node.Version = fmt.Sprintf("%d", binary.BigEndian.Uint32(buffer[1:1+4]))
-	node.MOTD = string(bytes.Trim(buffer[1+4:], "\x00"))
-	return nil
-}
-
-func tryTCPHandshake(node *toxNode, conn net.Conn, port int) tcpHandshakeResult {
-	/* NOTE: conn is closed at the end of this function */
-	nodePublicKey, err := hex.DecodeString(node.PublicKey)
-	if err != nil {
-		return tcpHandshakeResult{port, err}
-	}
-
-	nonce := nextNonce()
-	baseNonce := nextNonce()
-	plain := make([]byte, len(crypto.PublicKey)+len(baseNonce))
-	tempCrypto, _ := NewCrypto()
-
-	copy(plain, tempCrypto.PublicKey)
-	copy(plain[len(tempCrypto.PublicKey):], baseNonce)
-	sharedKey := crypto.CreateSharedKey(nodePublicKey)
-	encrypted := encryptData(plain, sharedKey, nonce)[16:]
-
-	payload := make([]byte, tcpHandshakePacketLength)
-	copy(payload, crypto.PublicKey)
-	copy(payload[len(crypto.PublicKey):], nonce)
-	copy(payload[len(crypto.PublicKey)+len(nonce):], encrypted)
-	conn.Write(payload)
-
-	buffer := make([]byte, tcpHandshakeResponsePacketLength)
-	read, err := conn.Read(buffer)
-
-	var result tcpHandshakeResult
-
-	if err != nil {
-		result = tcpHandshakeResult{port, err}
-	} else if read != tcpHandshakeResponsePacketLength {
-		result = tcpHandshakeResult{
-			port,
-			errors.New("tcp handshake response had an invalid length"),
+	buffer := make([]byte, 96)
+	left := len(buffer)
+	for left > 0 {
+		read, readErr := conn.Read(buffer[len(buffer)-left:])
+		if readErr != nil {
+			return readErr
 		}
-	} else if isValidHandshakeResponse(buffer, baseNonce, sharedKey, tempCrypto) {
-		result = tcpHandshakeResult{
-			port,
-			errors.New("tcp handshake response is incorrect"),
-		}
-	} else {
-		result = tcpHandshakeResult{port, nil}
+		left -= read
 	}
 
-	conn.Close()
-	return result
+	res := relay.HandshakeResponsePacket{}
+	err = res.UnmarshalBinary(buffer)
+	if err != nil {
+		return err
+	}
+
+	decryptedBytes, err := ident.DecryptBlob(res.Payload, nodePublicKey, res.Nonce)
+	if err != nil {
+		return err
+	}
+
+	resPacket := &relay.HandshakePayload{}
+	err = resPacket.UnmarshalBinary(decryptedBytes)
+	if err != nil {
+		return err
+	}
+
+	return relayConn.EndHandshake(resPacket)
 }
 
-func isValidHandshakeResponse(data []byte, baseNonce []byte, sharedKey []byte, tempPair *Crypto) bool {
-	nonceSize := cryptobox.CryptoBoxNonceBytes()
-	nonce := data[:nonceSize]
-	encrypted := data[nonceSize:]
+func getNodes(node *toxNode) error {
+	nodePublicKey := new([crypto.PublicKeySize]byte)
+	decPublicKey, err := hex.DecodeString(node.PublicKey)
+	if err != nil {
+		return err
+	}
+	copy(nodePublicKey[:], decPublicKey)
 
-	decrypted := decryptData(encrypted, sharedKey, nonce)
-	if decrypted == nil {
-		return false
+	ping, err := pings.AddNew(nodePublicKey)
+	if err != nil {
+		return err
 	}
 
-	serverBaseNonce := decrypted[:nonceSize]
-	tempPublicKey := decrypted[nonceSize:]
-
-	if !bytes.Equal(tempPair.PublicKey, tempPublicKey) {
-		return false
+	packet := &dht.GetNodesPacket{
+		PublicKey: ident.PublicKey,
+		PingID:    ping.ID,
 	}
 
-	if !bytes.Equal(baseNonce, serverBaseNonce) {
-		return false
+	dhtPacket, err := ident.EncryptPacket(transport.Packet(packet), nodePublicKey)
+	if err != nil {
+		return err
 	}
 
-	return true
+	payload, err := dhtPacket.MarshalBinary()
+	if err != nil {
+		return err
+	}
+
+	return sendToUDP(payload, node)
 }
 
-func newNodeConn(node *toxNode, port int, network string) (net.Conn, error) {
+func getBootstrapInfo(node *toxNode) error {
+	packet, err := bootstrap.ConstructPacket(&bootstrap.InfoRequestPacket{})
+	if err != nil {
+		return err
+	}
+
+	payload, err := packet.MarshalBinary()
+	if err != nil {
+		return err
+	}
+
+	return sendToUDP(payload, node)
+}
+
+func sendToUDP(data []byte, node *toxNode) error {
+	addr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", node.Ipv4Address, node.Port))
+	if err != nil {
+		return err
+	}
+
+	return udpTransport.Send(
+		&transport.Message{
+			Data: data,
+			Addr: &net.UDPAddr{
+				IP:   addr.IP,
+				Port: node.Port,
+			},
+		},
+	)
+}
+
+func connectTCP(node *toxNode, port int) (*net.TCPConn, error) {
 	dialer := net.Dialer{}
-	dialer.Deadline = time.Now().Add(dialerTimeout * time.Second)
+	dialer.Deadline = time.Now().Add(2 * time.Second)
 
-	conn, err := dialer.Dial(network, fmt.Sprintf("%s:%d", node.Ipv4Address, port))
+	tempConn, err := dialer.Dial("tcp", fmt.Sprintf("%s:%d", node.Ipv4Address, port))
 	if err != nil {
 		return nil, err
 	}
 
-	conn.SetReadDeadline(time.Now().Add(queryTimeout * time.Second))
+	conn, ok := tempConn.(*net.TCPConn)
+	if !ok {
+		return nil, errors.New("not a tcp conn")
+	}
+
 	return conn, nil
 }
 
-func parseNode(nodeString string) *toxNode {
-	nodeString = stripSpaces(nodeString)
-	if !strings.HasPrefix(nodeString, "|") {
+func handleSendNodesPacket(msg *transport.Message) error {
+	dhtPacket := &dht.Packet{}
+	err := dhtPacket.UnmarshalBinary(msg.Data)
+	if err != nil {
+		return err
+	}
+
+	decryptedPacket, err := ident.DecryptPacket(dhtPacket)
+	if err != nil {
+		return err
+	}
+
+	packet, ok := decryptedPacket.(*dht.SendNodesPacket)
+	if !ok {
 		return nil
 	}
 
-	lineParts := strings.Split(nodeString, "|")
-	if port, err := strconv.Atoi(lineParts[3]); err == nil && len(lineParts) == 8 {
-		node := toxNode{
-			lineParts[1],
-			lineParts[2],
-			port,
-			[]int{},
-			lineParts[4],
-			lineParts[5],
-			lineParts[6],
-			false,
-			false,
-			"",
-			"",
-			0,
-		}
+	pingsMutex.Lock()
+	nodesMutex.Lock()
+	if pings.Find(dhtPacket.SenderPublicKey, packet.PingID, true) != nil {
+		for _, node := range nodes {
+			publicKey, err := hex.DecodeString(node.PublicKey)
+			if err != nil {
+				continue
+			}
 
-		if node.Ipv6Address == "NONE" {
-			node.Ipv6Address = "-"
+			if bytes.Equal(publicKey, dhtPacket.SenderPublicKey[:]) {
+				node.UDPStatus = true
+				node.LastPing = time.Now().Unix()
+				break
+			}
 		}
-
-		return &node
 	}
+	sort.Stable(nodeSlice(nodes))
+	pingsMutex.Unlock()
+	nodesMutex.Unlock()
 
 	return nil
 }
 
-func parseNodes() ([]*toxNode, error) {
-	res, err := http.Get(wikiURI)
+func handleBootstrapInfoPacket(msg *transport.Message) error {
+	bootstrapPacket := &bootstrap.Packet{}
+	err := bootstrapPacket.UnmarshalBinary(msg.Data)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	defer res.Body.Close()
 
-	nodesList := []*toxNode{}
-	content, err := ioutil.ReadAll(res.Body)
+	transPacket, err := bootstrap.DestructPacket(bootstrapPacket)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	lines := strings.Split(string(content), "\n")
-	for _, line := range lines {
-		node := parseNode(line)
-		if node == nil {
-			continue
-		}
-
-		oldNode := getOldNode(node.PublicKey)
-		if oldNode != nil { //transfer last ping info
-			node.LastPing = oldNode.LastPing
-		}
-
-		nodesList = append(nodesList, node)
+	packet, ok := transPacket.(*bootstrap.InfoResponsePacket)
+	if !ok {
+		return errors.New("wtf")
 	}
-	return nodesList, nil
-}
 
-func getOldNode(publicKey string) *toxNode {
+	nodesMutex.Lock()
 	for _, node := range nodes {
-		if node.PublicKey == publicKey {
-			return node
+		if node.Ipv4Address == msg.Addr.IP.String() ||
+			node.Ipv6Address == msg.Addr.IP.String() {
+			node.MOTD = packet.MOTD
+			node.Version = fmt.Sprintf("%d", packet.Version)
+			break
 		}
 	}
+	nodesMutex.Unlock()
+
 	return nil
-}
-
-type nodeSlice []*toxNode
-
-func (c nodeSlice) Len() int {
-	return len(c)
-}
-
-func (c nodeSlice) Swap(i, j int) {
-	c[i], c[j] = c[j], c[i]
-}
-
-func (c nodeSlice) Less(i, j int) bool {
-	if c[i].UDPStatus != c[j].UDPStatus {
-		return c[i].UDPStatus
-	}
-
-	if c[i].TCPStatus != c[j].TCPStatus {
-		return c[i].TCPStatus
-	}
-
-	return false
 }
