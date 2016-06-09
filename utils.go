@@ -2,6 +2,8 @@ package main
 
 import (
 	"fmt"
+	"mime"
+	"path/filepath"
 	"strings"
 	"time"
 	"unicode"
@@ -64,4 +66,12 @@ func increment(i int) int {
 
 func getLocString(loc string) string {
 	return countries[loc]
+}
+
+func mimeTypeByExtension(ext string) string {
+	t := mime.TypeByExtension(filepath.Ext(ext))
+	if t == "" {
+		t = "application/octet-stream"
+	}
+	return t
 }

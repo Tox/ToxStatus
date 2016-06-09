@@ -168,6 +168,7 @@ func handleHTTPRequest(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, http.StatusText(404), 404)
 	} else {
+		w.Header().Set("Content-Type", mimeTypeByExtension(urlPath))
 		w.Write(data)
 	}
 }
