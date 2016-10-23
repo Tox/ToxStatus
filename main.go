@@ -134,9 +134,7 @@ func main() {
 				log.Printf("error while trying to probe nodes: %s", err.Error())
 			}
 		case <-refreshTicker.C:
-			nodesMutex.Lock()
 			err := refreshNodes()
-			nodesMutex.Unlock()
 			if err != nil {
 				log.Printf("error while trying to refresh nodes: %s", err.Error())
 			}
@@ -158,12 +156,13 @@ func main() {
 }
 
 func refreshNodes() error {
-	nodesList, err := parseNodes()
+	parsedNodes, err := parseNodes()
 	if err != nil {
 		return err
 	}
 
-	for _, freshNode := range nodesList {
+	nodesMutex.Lock()
+	for _, freshNode := range parsedNodes {
 		found := false
 		for i, node := range nodes {
 			if freshNode.PublicKey == node.PublicKey {
@@ -183,9 +182,10 @@ func refreshNodes() error {
 			nodes = append(nodes, freshNode)
 		}
 	}
-	lastRefresh = time.Now().Unix()
-
 	sort.Stable(nodeSlice(nodes))
+	nodesMutex.Unlock()
+
+	lastRefresh = time.Now().Unix()
 	return nil
 }
 
