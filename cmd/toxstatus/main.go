@@ -227,15 +227,17 @@ func probeNodeTCPPorts(node *toxNode, ports []int) {
 			if err != nil {
 				fmt.Printf("%s\n", err.Error())
 				c <- -1
-			} else {
-				err := tcpHandshake(node, conn)
-				if err != nil {
-					fmt.Printf("%s\n", err.Error())
-					c <- -1
-				} else {
-					c <- p
-				}
+				return
 			}
+
+			err = tcpHandshake(node, conn)
+			if err != nil {
+				fmt.Printf("%s\n", err.Error())
+				c <- -1
+			} else {
+				c <- p
+			}
+			conn.Close()
 		}(port)
 	}
 
