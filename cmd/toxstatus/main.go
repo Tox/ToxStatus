@@ -239,6 +239,7 @@ func probeNodeTCPPorts(node *toxNode, ports []int) {
 		}(port)
 	}
 
+	nodesMutex.Lock()
 	node.TCPPorts = []int{}
 
 	for i := 0; i < len(ports); i++ {
@@ -248,8 +249,12 @@ func probeNodeTCPPorts(node *toxNode, ports []int) {
 			node.TCPPorts = append(node.TCPPorts, port)
 		}
 	}
-
+	if len(node.TCPPorts) > 0 {
+		node.LastPing = time.Now().Unix()
+	}
 	node.TCPStatus = len(node.TCPPorts) > 0
+	sort.Stable(nodeSlice(nodes))
+	nodesMutex.Unlock()
 }
 
 func tcpHandshake(node *toxNode, conn *net.TCPConn) error {
