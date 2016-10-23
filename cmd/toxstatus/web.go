@@ -2,11 +2,11 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"html/template"
 	"io/ioutil"
 	"log"
 	"net/http"
-	"path"
 	"strconv"
 	"strings"
 )
@@ -38,7 +38,8 @@ const (
 )
 
 var (
-	funcMap = template.FuncMap{
+	assetMap = GetAssets()
+	funcMap  = template.FuncMap{
 		"lower": strings.ToLower,
 		"inc":   increment,
 		"since": getTimeSinceString,
@@ -49,13 +50,13 @@ var (
 )
 
 func loadCountries() error {
-	bytes, err := ioutil.ReadFile("./assets/countries.json")
-	if err != nil {
-		return err
+	const name = "countries.json"
+	bytes, ok := assetMap[name]
+	if !ok {
+		return fmt.Errorf("asset %s not found", name)
 	}
 
-	err = json.Unmarshal(bytes, &countries)
-	return err
+	return json.Unmarshal(bytes, &countries)
 }
 
 func handleHTTPRequest(w http.ResponseWriter, r *http.Request) {
@@ -65,20 +66,23 @@ func handleHTTPRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	//TODO: make this more efficient
-	data, err := ioutil.ReadFile(path.Join("./assets/", string(urlPath)))
-	if err != nil {
+	data, ok := assetMap[urlPath]
+	if !ok {
 		http.Error(w, http.StatusText(404), 404)
 	} else {
+		w.Header().Set("Content-Type", mimeTypeByExtension(urlPath))
 		w.Write(data)
 	}
 }
 
 func renderMainPage(w http.ResponseWriter, urlPath string) {
-	tmpl, err := template.New("index.html").
-		Funcs(funcMap).
-		ParseFiles(path.Join("./assets/", string(urlPath)))
+	data, ok := assetMap["index.html"]
+	if !ok {
+		http.Error(w, http.StatusText(500), 500)
+		return
+	}
 
+	tmpl, err := template.New("index.html").Funcs(funcMap).Parse(string(data))
 	if err != nil {
 		http.Error(w, http.StatusText(500), 500)
 		log.Printf("Internal server error while trying to serve index: %s", err.Error())

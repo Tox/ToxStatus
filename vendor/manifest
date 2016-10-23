@@ -2,6 +2,13 @@
 	"version": 0,
 	"dependencies": [
 		{
+			"importpath": "github.com/Impyy/go-embed",
+			"repository": "https://github.com/Impyy/go-embed",
+			"revision": "845f3d77900cb2fcbd242e7fa93d6464f5caf0cc",
+			"branch": "master",
+			"notests": true
+		},
+		{
 			"importpath": "github.com/Impyy/tox4go/bootstrap",
 			"repository": "https://github.com/Impyy/tox4go",
 			"revision": "5bc69ab94c144c8acc5f482cb7718054c8c9b071",
