@@ -15,9 +15,9 @@ func (c nodeSlice) Less(i, j int) bool {
 		return c[i].UDPStatus
 	}
 
-	if c[i].TCPStatus != c[j].TCPStatus {
+	if !c[i].UDPStatus && !c[j].UDPStatus {
 		return c[i].TCPStatus
 	}
 
-	return false
+	return c[i].index < c[j].index
 }

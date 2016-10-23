@@ -30,6 +30,7 @@ type toxNode struct {
 	Version     string `json:"version"`
 	MOTD        string `json:"motd"`
 	LastPing    int64  `json:"last_ping"`
+	index       int
 }
 
 const (
@@ -117,12 +118,13 @@ func parseNodes() ([]*toxNode, error) {
 	}
 
 	lines := strings.Split(string(content), "\n")
-	for _, line := range lines {
+	for i, line := range lines {
 		node := parseNode(line)
 		if node == nil {
 			continue
 		}
 
+		node.index = i
 		nodesList = append(nodesList, node)
 	}
 	return nodesList, nil
@@ -139,18 +141,18 @@ func parseNode(nodeString string) *toxNode {
 
 	if port, err := strconv.Atoi(lineParts[3]); err == nil && len(lineParts) == 8 {
 		node = &toxNode{
-			lineParts[1],
-			lineParts[2],
-			port,
-			[]int{},
-			lineParts[4],
-			lineParts[5],
-			lineParts[6],
-			false,
-			false,
-			"",
-			"",
-			0,
+			Ipv4Address: lineParts[1],
+			Ipv6Address: lineParts[2],
+			Port:        port,
+			TCPPorts:    []int{},
+			PublicKey:   lineParts[4],
+			Maintainer:  lineParts[5],
+			Location:    lineParts[6],
+			UDPStatus:   false,
+			TCPStatus:   false,
+			Version:     "",
+			MOTD:        "",
+			LastPing:    0,
 		}
 
 		if node.Ipv6Address == "NONE" {
