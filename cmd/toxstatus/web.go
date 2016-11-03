@@ -32,6 +32,8 @@ type toxNode struct {
 	MOTD        string `json:"motd"`
 	LastPing    int64  `json:"last_ping"`
 	index       int
+	ip4         net.IP
+	ip6         net.IP
 }
 
 const (
@@ -142,15 +144,11 @@ func parseNode(nodeString string) *toxNode {
 
 	if port, err := strconv.Atoi(lineParts[3]); err == nil && len(lineParts) == 8 {
 		ip4, err := net.ResolveIPAddr("ip4", lineParts[1])
-		if err == nil {
-			lineParts[1] = ip4.IP.String()
-		} else {
+		if err != nil {
 			fmt.Printf("couldn't resolve %s: %s\n", lineParts[1], err.Error())
 		}
 		ip6, err := net.ResolveIPAddr("ip6", lineParts[2])
-		if err == nil {
-			lineParts[2] = ip6.IP.String()
-		} else {
+		if err != nil {
 			fmt.Printf("couldn't resolve %s: %s\n", lineParts[2], err.Error())
 		}
 
@@ -167,6 +165,15 @@ func parseNode(nodeString string) *toxNode {
 			Version:     "",
 			MOTD:        "",
 			LastPing:    0,
+			ip4:         nil,
+			ip6:         nil,
+		}
+
+		if ip4 != nil {
+			node.ip4 = ip4.IP
+		}
+		if ip6 != nil {
+			node.ip6 = ip6.IP
 		}
 
 		if node.Ipv6Address == "NONE" {

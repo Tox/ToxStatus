@@ -23,6 +23,7 @@ import (
 )
 
 const (
+	enableIpv6  = true
 	probeRate   = 1 * time.Minute
 	refreshRate = 5 * time.Minute
 )
@@ -35,9 +36,9 @@ var (
 	ident        *dht.Ident
 	nodes        = []*toxNode{}
 	nodesMutex   = sync.Mutex{}
-	tcpPorts     = []int{443, 3389, 33445}
 	pings        = new(ping.Collection)
 	pingsMutex   = sync.Mutex{}
+	tcpPorts     = []int{443, 3389, 33445}
 )
 
 func init() {
@@ -380,7 +381,7 @@ func getBootstrapInfo(node *toxNode) error {
 }
 
 func sendToUDP(data []byte, node *toxNode) error {
-	addr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", node.Ipv4Address, node.Port))
+	ip, err := getNodeIP(node)
 	if err != nil {
 		return err
 	}
@@ -389,18 +390,33 @@ func sendToUDP(data []byte, node *toxNode) error {
 		&transport.Message{
 			Data: data,
 			Addr: &net.UDPAddr{
-				IP:   addr.IP,
+				IP:   ip,
 				Port: node.Port,
 			},
 		},
 	)
 }
 
+func getNodeIP(node *toxNode) (net.IP, error) {
+	if node.ip4 != nil {
+		return node.ip4, nil
+	} else if enableIpv6 && node.ip6 != nil {
+		return node.ip6, nil
+	}
+
+	return nil, fmt.Errorf("no valid ip found for %s", node.Maintainer)
+}
+
 func connectTCP(node *toxNode, port int) (*net.TCPConn, error) {
+	ip, err := getNodeIP(node)
+	if err != nil {
+		return nil, err
+	}
+
 	dialer := net.Dialer{}
 	dialer.Deadline = time.Now().Add(2 * time.Second)
 
-	tempConn, err := dialer.Dial("tcp", fmt.Sprintf("%s:%d", node.Ipv4Address, port))
+	tempConn, err := dialer.Dial("tcp", fmt.Sprintf("%s:%d", ip, port))
 	if err != nil {
 		return nil, err
 	}
