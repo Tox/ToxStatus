@@ -488,8 +488,8 @@ func handleBootstrapInfoPacket(msg *transport.Message) error {
 
 	nodesMutex.Lock()
 	for _, node := range nodes {
-		if node.Ipv4Address == msg.Addr.IP.String() ||
-			node.Ipv6Address == msg.Addr.IP.String() {
+		if (node.ip4 != nil && node.ip4.Equal(msg.Addr.IP)) ||
+			(node.ip6 != nil && node.ip6.Equal(msg.Addr.IP)) {
 			node.MOTD = packet.MOTD
 			node.Version = fmt.Sprintf("%d", packet.Version)
 			break
