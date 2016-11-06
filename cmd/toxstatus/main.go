@@ -89,6 +89,7 @@ func main() {
 	}
 	limiter := tollbooth.NewLimiter(1, 2*time.Second)
 	limiter.Methods = []string{"POST"}
+	limiter.IPLookups = []string{"X-Forwarded-For", "RemoteAddr", "X-Real-IP"}
 	serveMux := http.NewServeMux()
 	serveMux.HandleFunc("/", handleHTTPRequest)
 	serveMux.Handle("/test", tollbooth.LimitFuncHandler(limiter, handleHTTPRequest))
