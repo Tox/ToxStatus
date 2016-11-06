@@ -20,6 +20,7 @@ import (
 	"github.com/Impyy/tox4go/dht/ping"
 	"github.com/Impyy/tox4go/relay"
 	"github.com/Impyy/tox4go/transport"
+	"github.com/didip/tollbooth"
 )
 
 const (
@@ -80,8 +81,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("error in net.Listen: %s", err.Error())
 	}
+	limiter := tollbooth.NewLimiter(1, 2*time.Second)
+	limiter.Methods = []string{"POST"}
 	serveMux := http.NewServeMux()
 	serveMux.HandleFunc("/", handleHTTPRequest)
+	serveMux.Handle("/test", tollbooth.LimitFuncHandler(limiter, handleHTTPRequest))
 	serveMux.HandleFunc("/json", handleJSONRequest)
 	go func() {
 		err := http.Serve(listener, serveMux)
