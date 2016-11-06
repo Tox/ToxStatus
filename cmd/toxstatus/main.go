@@ -23,6 +23,12 @@ import (
 	"github.com/didip/tollbooth"
 )
 
+type instance struct {
+	UDPTransport *transport.UDPTransport
+	TCPTransport *transport.TCPTransport
+	Ident        *dht.Ident
+}
+
 const (
 	enableIpv6  = true
 	probeRate   = 1 * time.Minute
@@ -30,25 +36,14 @@ const (
 )
 
 var (
-	lastScan     int64
-	lastRefresh  int64
-	udpTransport *transport.UDPTransport
-	tcpTransport *transport.TCPTransport
-	ident        *dht.Ident
-	nodes        = []*toxNode{}
-	nodesMutex   = sync.Mutex{}
-	pings        = new(ping.Collection)
-	pingsMutex   = sync.Mutex{}
-	tcpPorts     = []int{443, 3389, 33445}
+	lastScan    int64
+	lastRefresh int64
+	nodes       = []*toxNode{}
+	nodesMutex  = sync.Mutex{}
+	pings       = new(ping.Collection)
+	pingsMutex  = sync.Mutex{}
+	tcpPorts    = []int{443, 3389, 33445}
 )
-
-func init() {
-	var err error
-	ident, err = dht.NewIdent()
-	if err != nil {
-		log.Fatalf("error creating new dht identity: %s", err)
-	}
-}
 
 func main() {
 	if parseFlags() {
@@ -59,18 +54,29 @@ func main() {
 		log.Fatalf("error loading countries.json: %s", err.Error())
 	}
 
-	var err error
-	udpTransport, err = transport.NewUDPTransport("udp", ":33450")
-	if err != nil {
-		log.Fatalf("error creating new udp transport instance: %s", err)
-	}
-	udpTransport.Handle(dht.PacketIDSendNodes, handleSendNodesPacket)
-	udpTransport.Handle(bootstrap.PacketIDBootstrapInfo, handleBootstrapInfoPacket)
+	inst := instance{}
+	{
+		var err error
+		ident, err := dht.NewIdent()
+		if err != nil {
+			log.Fatalf("error creating new dht identity: %s", err)
+		}
+		inst.Ident = ident
 
-	/*tcpTransport, err = transport.NewTCPTransport("tcp", ":33450")
-	if err != nil {
-		panic(err)
-	}*/
+		udpTransport, err := transport.NewUDPTransport("udp", ":33450")
+		if err != nil {
+			log.Fatalf("error creating new udp transport instance: %s", err)
+		}
+		udpTransport.Handle(dht.PacketIDSendNodes, inst.handleSendNodesPacket)
+		udpTransport.Handle(bootstrap.PacketIDBootstrapInfo, handleBootstrapInfoPacket)
+		inst.UDPTransport = udpTransport
+
+		/*tcpTransport, err = transport.NewTCPTransport("tcp", ":33450")
+		if err != nil {
+			panic(err)
+		}
+		inst.TCPTransport = tcpTransport*/
+	}
 
 	//handle stop signal
 	interruptChan := make(chan os.Signal)
@@ -97,7 +103,7 @@ func main() {
 
 	//listen for tox packets
 	go func() {
-		err := udpTransport.Listen()
+		err := inst.UDPTransport.Listen()
 		if err != nil {
 			log.Printf("udp transport error: %s\n", err.Error())
 			interruptChan <- os.Interrupt
@@ -109,7 +115,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err.Error())
 	}
-	probeNodes()
+	inst.probeNodes()
 
 	probeTicker := time.NewTicker(probeRate)
 	refreshTicker := time.NewTicker(refreshRate)
@@ -123,7 +129,7 @@ func main() {
 			probeTicker.Stop()
 			refreshTicker.Stop()
 			updateTicker.Stop()
-			udpTransport.Stop()
+			inst.UDPTransport.Stop()
 			//tcpTransport.Stop()
 			listener.Close()
 			run = false
@@ -134,7 +140,7 @@ func main() {
 			pingsMutex.Unlock()
 
 			nodesMutex.Lock()
-			err := probeNodes()
+			err := inst.probeNodes()
 			nodesMutex.Unlock()
 			if err != nil {
 				log.Printf("error while trying to probe nodes: %s", err.Error())
@@ -195,17 +201,24 @@ func refreshNodes() error {
 	return nil
 }
 
-func probeNodes() error {
+func (i *instance) probeNodes() error {
 	for _, node := range nodes {
-		err := getBootstrapInfo(node)
+		err := i.getBootstrapInfo(node)
 		if err != nil {
 			fmt.Println(err.Error())
 		}
 
-		err = getNodes(node)
+		p, err := i.getNodes(node)
 		if err != nil {
 			fmt.Println(err.Error())
 		}
+
+		pingsMutex.Lock()
+		err = pings.Add(p)
+		if err != nil {
+			fmt.Println(err.Error())
+		}
+		pingsMutex.Unlock()
 
 		ports := tcpPorts
 		exists := false
@@ -218,14 +231,14 @@ func probeNodes() error {
 			ports = append(ports, node.Port)
 		}
 
-		go probeNodeTCPPorts(node, ports)
+		go i.probeNodeTCPPorts(node, ports)
 	}
 
 	lastScan = time.Now().Unix()
 	return nil
 }
 
-func probeNodeTCPPorts(node *toxNode, ports []int) {
+func (i *instance) probeNodeTCPPorts(node *toxNode, ports []int) {
 	c := make(chan int)
 	for _, port := range ports {
 		go func(p int) {
@@ -236,7 +249,7 @@ func probeNodeTCPPorts(node *toxNode, ports []int) {
 				return
 			}
 
-			err = tcpHandshake(node, conn)
+			err = i.tcpHandshake(node, conn)
 			if err != nil {
 				fmt.Printf("%s\n", err.Error())
 				c <- -1
@@ -265,7 +278,7 @@ func probeNodeTCPPorts(node *toxNode, ports []int) {
 	nodesMutex.Unlock()
 }
 
-func tcpHandshake(node *toxNode, conn *net.TCPConn) error {
+func (i *instance) tcpHandshake(node *toxNode, conn *net.TCPConn) error {
 	nodePublicKey := new([crypto.PublicKeySize]byte)
 	decPublicKey, err := hex.DecodeString(node.PublicKey)
 	if err != nil {
@@ -288,13 +301,13 @@ func tcpHandshake(node *toxNode, conn *net.TCPConn) error {
 		return err
 	}
 
-	encryptedReqBytes, nonce, err := ident.EncryptBlob(reqBytes, nodePublicKey)
+	encryptedReqBytes, nonce, err := i.Ident.EncryptBlob(reqBytes, nodePublicKey)
 	if err != nil {
 		return err
 	}
 
 	reqPacket := &relay.HandshakeRequestPacket{
-		PublicKey: ident.PublicKey,
+		PublicKey: i.Ident.PublicKey,
 		Nonce:     nonce,
 		Payload:   encryptedReqBytes,
 	}
@@ -326,7 +339,7 @@ func tcpHandshake(node *toxNode, conn *net.TCPConn) error {
 		return err
 	}
 
-	decryptedBytes, err := ident.DecryptBlob(res.Payload, nodePublicKey, res.Nonce)
+	decryptedBytes, err := i.Ident.DecryptBlob(res.Payload, nodePublicKey, res.Nonce)
 	if err != nil {
 		return err
 	}
@@ -340,38 +353,42 @@ func tcpHandshake(node *toxNode, conn *net.TCPConn) error {
 	return relayConn.EndHandshake(resPacket)
 }
 
-func getNodes(node *toxNode) error {
+func (i *instance) getNodes(node *toxNode) (*ping.Ping, error) {
 	nodePublicKey := new([crypto.PublicKeySize]byte)
 	decPublicKey, err := hex.DecodeString(node.PublicKey)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	copy(nodePublicKey[:], decPublicKey)
 
-	ping, err := pings.AddNew(nodePublicKey)
+	p, err := ping.NewPing(nodePublicKey)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	packet := &dht.GetNodesPacket{
-		PublicKey: ident.PublicKey,
-		PingID:    ping.ID,
+		PublicKey: i.Ident.PublicKey,
+		PingID:    p.ID,
 	}
 
-	dhtPacket, err := ident.EncryptPacket(transport.Packet(packet), nodePublicKey)
+	dhtPacket, err := i.Ident.EncryptPacket(transport.Packet(packet), nodePublicKey)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	payload, err := dhtPacket.MarshalBinary()
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	return sendToUDP(payload, node)
+	if err := i.sendToUDP(payload, node); err != nil {
+		return nil, err
+	}
+
+	return p, nil
 }
 
-func getBootstrapInfo(node *toxNode) error {
+func (i *instance) getBootstrapInfo(node *toxNode) error {
 	packet, err := bootstrap.ConstructPacket(&bootstrap.InfoRequestPacket{})
 	if err != nil {
 		return err
@@ -382,16 +399,16 @@ func getBootstrapInfo(node *toxNode) error {
 		return err
 	}
 
-	return sendToUDP(payload, node)
+	return i.sendToUDP(payload, node)
 }
 
-func sendToUDP(data []byte, node *toxNode) error {
+func (i *instance) sendToUDP(data []byte, node *toxNode) error {
 	ip, err := getNodeIP(node)
 	if err != nil {
 		return err
 	}
 
-	return udpTransport.Send(
+	return i.UDPTransport.Send(
 		&transport.Message{
 			Data: data,
 			Addr: &net.UDPAddr{
@@ -434,14 +451,14 @@ func connectTCP(node *toxNode, port int) (*net.TCPConn, error) {
 	return conn, nil
 }
 
-func handleSendNodesPacket(msg *transport.Message) error {
+func (i *instance) handleSendNodesPacket(msg *transport.Message) error {
 	dhtPacket := &dht.Packet{}
 	err := dhtPacket.UnmarshalBinary(msg.Data)
 	if err != nil {
 		return err
 	}
 
-	decryptedPacket, err := ident.DecryptPacket(dhtPacket)
+	decryptedPacket, err := i.Ident.DecryptPacket(dhtPacket)
 	if err != nil {
 		return err
 	}

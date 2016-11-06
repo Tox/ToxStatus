@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Impyy/tox4go/dht"
+	"github.com/Impyy/tox4go/dht/ping"
 	"github.com/Impyy/tox4go/transport"
 )
 
@@ -62,20 +63,31 @@ func parseFlags() bool {
 func probeNode(node *toxNode) error {
 	resChan := make(chan bool, 1)
 	timeoutChan := time.NewTimer(time.Second * 2)
+	pings := ping.NewCollection()
 
-	var err error
-	udpTransport, err = transport.NewUDPTransport("udp", "")
-	if err != nil {
-		return err
+	inst := instance{}
+	{
+		ident, err := dht.NewIdent()
+		if err != nil {
+			return err
+		}
+		inst.Ident = ident
+
+		udpTransport, err := transport.NewUDPTransport("udp", "")
+		if err != nil {
+			return err
+		}
+		inst.UDPTransport = udpTransport
 	}
-	udpTransport.Handle(dht.PacketIDSendNodes, func(msg *transport.Message) error {
+
+	inst.UDPTransport.Handle(dht.PacketIDSendNodes, func(msg *transport.Message) error {
 		dhtPacket := &dht.Packet{}
 		err := dhtPacket.UnmarshalBinary(msg.Data)
 		if err != nil {
 			return err
 		}
 
-		decryptedPacket, err := ident.DecryptPacket(dhtPacket)
+		decryptedPacket, err := inst.Ident.DecryptPacket(dhtPacket)
 		if err != nil {
 			return err
 		}
@@ -88,10 +100,14 @@ func probeNode(node *toxNode) error {
 		resChan <- pings.Find(dhtPacket.SenderPublicKey, packet.PingID, true) != nil
 		return nil
 	})
-	go udpTransport.Listen()
-	defer udpTransport.Stop()
+	go inst.UDPTransport.Listen()
+	defer inst.UDPTransport.Stop()
 
-	if err := getNodes(node); err != nil {
+	p, err := inst.getNodes(node)
+	if err != nil {
+		return err
+	}
+	if err = pings.Add(p); err != nil {
 		return err
 	}
 
@@ -108,11 +124,20 @@ func probeNode(node *toxNode) error {
 }
 
 func probeNodeTCP(node *toxNode) error {
+	inst := instance{}
+	{
+		ident, err := dht.NewIdent()
+		if err != nil {
+			return err
+		}
+		inst.Ident = ident
+	}
+
 	conn, err := connectTCP(node, node.Port)
 	if err != nil {
 		return err
 	}
 	defer conn.Close()
 
-	return tcpHandshake(node, conn)
+	return inst.tcpHandshake(node, conn)
 }

@@ -51,6 +51,15 @@ func (c *Collection) AddNew(publicKey *[crypto.PublicKeySize]byte) (*Ping, error
 	return ping, nil
 }
 
+func (c *Collection) Add(p *Ping) error {
+	err := c.add(p)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (c *Collection) Clear(expiredOnly bool) {
 	for i := len(c.List) - 1; i >= 0; i-- {
 		if expiredOnly && !c.List[i].Expired() {

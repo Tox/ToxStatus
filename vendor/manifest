@@ -30,8 +30,8 @@
 		{
 			"importpath": "github.com/Impyy/tox4go/dht",
 			"repository": "https://github.com/Impyy/tox4go",
-			"vcs": "",
-			"revision": "5bc69ab94c144c8acc5f482cb7718054c8c9b071",
+			"vcs": "git",
+			"revision": "185f036750f1c882109c44369056866ee3b17975",
 			"branch": "master",
 			"path": "/dht",
 			"notests": true

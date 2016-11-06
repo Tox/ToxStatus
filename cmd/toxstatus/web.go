@@ -97,6 +97,8 @@ func handleHTTPRequest(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleTestRequest(w http.ResponseWriter, r *http.Request) {
+	fmt.Printf("test request from: %s\n", r.RemoteAddr)
+
 	err := r.ParseForm()
 	if err != nil {
 		http.Error(w, http.StatusText(500), 500)
