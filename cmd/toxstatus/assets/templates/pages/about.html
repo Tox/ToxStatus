@@ -2,8 +2,20 @@
 <link href="css/style-cnt-small.css" rel="stylesheet">
 {{ end }}
 {{ define "content" }}
-<div class="col-lg-6">
-	<p>Hello.</p>
+<div class="col-md-12">
+	<h3>How does it work?</h3>
+	<p>
+		Every once in a while, this web app will send <a target="_blank" href="https://toktok.github.io/spec#nodes-request-0x02">getnodes requests</a> to every node on <a target="_blank" href="https://wiki.tox.chat/users/nodes">the list</a>. 
+		If a node responds with a valid <a target="_blank" href="https://toktok.github.io/spec#nodes-response-0x04">sendnodes packet</a>, its status will be set to <span style="color:green"><strong>ONLINE</strong></span>.
+	</p>
+	<p>
+		We also try to see if a node also functions as a TCP relay. This is done by sending a <a target="_blank" href="https://toktok.github.io/spec#tcp-server-8">handshake request packet</a>. 
+		If a relay responds with a valid <a target="_blank" href="https://toktok.github.io/spec#tcp-server-12">handshake response packet</a>, a list of TCP ports will be shown as extra information.
+		If a node only functions as a TCP relay, its status will be set to <span style="color:orange"><strong>ONLINE</strong></span>.
+	</p>
+	<p>
+		If a node doesn't respond to either of those requests, its status will be set to <span style="color:red"><strong>OFFLINE</strong></span>.
+	</p>
 </div>
 {{ end }}
 {{ define "menu" }}
