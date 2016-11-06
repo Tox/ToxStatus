@@ -1,4 +1,25 @@
-.container { width: 1250px; }
+body {
+  padding-top: 20px;
+  padding-bottom: 20px;
+}
+
+.header,
+.footer {
+  padding-right: 15px;
+  padding-left: 15px;
+}
+
+
+.header {
+  padding-bottom: 20px;
+  border-bottom: 1px solid #e5e5e5;
+}
+
+.header h3 {
+  margin-top: 0;
+  margin-bottom: 0;
+  line-height: 40px;
+}
 
 /* the table-collapse stuff was taken from http://codepen.io/miloslovesky/pen/AawcB and is licensed under MIT */
 .table-collapse > tbody > tr {

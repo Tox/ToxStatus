@@ -3,14 +3,19 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"html/template"
 	"io/ioutil"
-	"log"
 	"net"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 )
+
+type testStatus struct {
+	Success bool   `json:"success"`
+	Latency int64  `json:"latency"`
+	Error   string `json:"error"`
+}
 
 type toxStatus struct {
 	LastScan    int64      `json:"last_scan"`
@@ -42,14 +47,6 @@ const (
 )
 
 var (
-	assetMap = GetAssets()
-	funcMap  = template.FuncMap{
-		"lower": strings.ToLower,
-		"inc":   increment,
-		"since": getTimeSinceString,
-		"loc":   getLocString,
-		"time":  getTimeString,
-	}
 	countries map[string]string
 )
 
@@ -66,44 +63,112 @@ func loadCountries() error {
 func handleHTTPRequest(w http.ResponseWriter, r *http.Request) {
 	urlPath := r.URL.Path[1:]
 	if r.URL.Path == "/" {
-		renderMainPage(w, "index.html")
+		urlPath = "index"
+	}
+
+	if r.Method == "POST" && r.URL.Path == "/test" {
+		handleTestRequest(w, r)
 		return
 	}
 
-	data, ok := assetMap[urlPath]
-	if !ok {
-		http.Error(w, http.StatusText(404), 404)
-	} else {
-		w.Header().Set("Content-Type", mimeTypeByExtension(urlPath))
-		w.Write(data)
+	var content interface{}
+	var filename string
+	switch r.URL.Path {
+	case "/":
+		content = toxStatus{lastScan, lastRefresh, nodes}
+		fallthrough
+	case "/test", "/about":
+		filename = urlPath + ".html"
+	default:
+		data, ok := assetMap[urlPath]
+		if !ok {
+			http.Error(w, http.StatusText(404), 404)
+		} else {
+			w.Header().Set("Content-Type", mimeTypeByExtension(urlPath))
+			w.Write(data)
+		}
+		return
+	}
+
+	err := renderTemplate(w, filename, content)
+	if err != nil {
+		fmt.Printf("tmpl exec error: %s\n", err.Error())
 	}
 }
 
-func renderMainPage(w http.ResponseWriter, urlPath string) {
-	data, ok := assetMap["index.html"]
-	if !ok {
+func handleTestRequest(w http.ResponseWriter, r *http.Request) {
+	err := r.ParseForm()
+	if err != nil {
 		http.Error(w, http.StatusText(500), 500)
 		return
 	}
 
-	tmpl, err := template.New("index.html").Funcs(funcMap).Parse(string(data))
+	ipPort := r.Form.Get("ipPort")
+	key := r.Form.Get("key")
+	net := r.Form.Get("net")
+
+	ipPortParts := strings.Split(ipPort, ":")
+	if len(ipPortParts) != 2 {
+		http.Error(w, http.StatusText(500), 500)
+		return
+	}
+
+	port, err := strconv.Atoi(ipPortParts[1])
 	if err != nil {
 		http.Error(w, http.StatusText(500), 500)
-		log.Printf("Internal server error while trying to serve index: %s", err.Error())
-	} else {
-		response := toxStatus{lastScan, lastRefresh, nodes}
-		tmpl.Execute(w, response)
+		return
 	}
+
+	ip := ipPortParts[0]
+	ip4, ip6 := resolveIPAddr(ip, ip)
+	node := toxNode{
+		PublicKey: key,
+		Port:      port,
+	}
+	if ip4 != nil {
+		node.ip4 = ip4.IP
+	}
+	if ip6 != nil {
+		node.ip6 = ip6.IP
+	}
+
+	err = nil
+	start := time.Now()
+	content := testStatus{Success: true}
+
+	switch net {
+	case "UDP":
+		err = probeNode(&node)
+	case "TCP":
+		err = probeNodeTCP(&node)
+	default:
+		http.Error(w, http.StatusText(500), 500)
+		return
+	}
+
+	if err != nil {
+		content.Success = false
+		content.Error = err.Error()
+	} else {
+		content.Latency = time.Now().Sub(start).Nanoseconds() / int64(time.Millisecond)
+	}
+
+	writeJSONResponse(w, content)
 }
 
 func handleJSONRequest(w http.ResponseWriter, r *http.Request) {
-	response := toxStatus{lastScan, lastRefresh, nodes}
-	bytes, err := json.Marshal(response)
+	content := toxStatus{lastScan, lastRefresh, nodes}
+	writeJSONResponse(w, content)
+}
+
+func writeJSONResponse(w http.ResponseWriter, content interface{}) {
+	bytes, err := json.Marshal(content)
 	if err != nil {
 		http.Error(w, http.StatusText(500), 500)
 		return
 	}
 
+	w.Header().Set("Content-Type", "application/json")
 	w.Write(bytes)
 }
 

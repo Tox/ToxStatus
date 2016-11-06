@@ -1,0 +1,128 @@
+{{ define "style" }}
+<link href="css/style-cnt-big.css" rel="stylesheet">
+{{ end }}
+{{ define "content" }}
+<center>
+	<h4>
+		<b>NOTICE</b>: If you're a node maintainer, please subscribe to the <a target="_blank" href="https://lists.tox.chat/listinfo/bootstrap">Bootstrap node announcement mailing list</a> to be notified of required updates.
+	</h4>
+</center>
+<div class="panel panel-default" id="accordion">
+	<table class="table table-collapse table-condensed" style="font-size:14px;">
+		<thead>
+			<tr>
+				<th></th>
+				<th>IPv4</th>
+				<th>IPv6</th>
+				<th>Port</th>
+				<th>Public Key</th>
+				<th>Maintainer</th>
+				<th>Status</th>
+			</tr>
+		</thead>
+		<tbody>
+			{{ range .Nodes }}
+			<tr class="collapsed" data-parent="#accordion" data-toggle="collapse" data-target="#collapse{{.PublicKey | html}}">
+				<td>
+				{{ if ne .Location "" }}
+				<img src="/img/flags/{{.Location | html | lower}}.png" title="{{.Location | loc | html}}" style="position:relative;top:50%;transform:translateY(45%);"/>
+				{{ end }}
+				</td>
+				<td>{{ .Ipv4Address | html }}</td>
+				<td>{{ .Ipv6Address | html }}</td>
+				<td>{{ .Port | html }}</td>
+				<td>{{ .PublicKey | html }}</td>
+				<td>{{ .Maintainer | html }}</td>
+				{{ if .UDPStatus}}
+				<td>
+					<span style="color:green">ONLINE</span>
+				</td>
+				{{ else if .TCPStatus }}
+				<td>
+					<span style="color:orange">ONLINE</span>
+				</td>
+				{{ else }}
+				<td>
+					<span style="color:red">OFFLINE</span>
+				</td>
+				{{ end }}
+			</tr>
+			<tr class="collapse" id="collapse{{.PublicKey | html}}">
+				<td colspan="7">
+					<div class="col-md-2">
+						<dl>
+							<dt>Location</dt>
+							<dd>{{ .Location | loc | html }}</dd>
+						</dl>
+					</div>
+					<div class="col-md-2">
+						<dl>
+							<dt>Last Ping</dt>
+							<dd>{{ .LastPing | since | html }}</dd>
+						</dl>
+					</div>
+					<div class="col-md-2">
+						<dl>
+							<dt>TCP</dt>
+							{{ if eq (.TCPPorts | len) 0 }}
+							<dd>-</dd>
+							{{ else }}
+							<dd>
+								{{ $ports := .TCPPorts }}
+								{{ range $i, $port := $ports }}
+									{{ if eq ($ports | len) ($i | inc) }}
+										{{ $port }}
+									{{ else }}
+										{{$port}},
+									{{ end }}
+								{{ end }}
+							</dd>
+							{{ end }}
+						</dl>
+					</div>
+					{{ if ne .Version "" }}
+					<div class="col-md-2">
+						<dl>
+							<dt>Version</dt>
+							<dd>{{ .Version | html }}</dd>
+						</dl>
+					</div>
+					<div class="col-md-4">
+						<dl>
+							<dt>MOTD</dt>
+							<dd style="white-space: pre-wrap;word-wrap: break-word;">{{ .MOTD | html }}</dd>
+						</dl>
+					</div>
+					{{ end }}
+					{{ if and (not .UDPStatus) (.TCPStatus) }}
+					<div class="col-md-4">
+						<dl>
+							<dt>Info</dt>
+							<dd>Unable connect to this node through UDP. A TCP relay seems to be up and running, however.</dd>
+						</dl>
+					</div>
+					{{ end }}
+				</td>
+			</tr>
+			{{ end }}
+		</tbody>
+	</table>
+</div>
+{{ end }}
+{{ define "menu" }}
+<li role="presentation" class="active"><a href="/">Home</a></li>
+<li role="presentation"><a href="/test">Test</a></li>
+<li role="presentation"><a href="/about">About</a></li>
+{{ end }}
+{{ define "scripts" }}
+<script src="js/jquery.min.js"></script>
+<script src="js/bootstrap.min.js"></script>
+<script>
+	$('.collapse').on('show.bs.collapse', function() {
+		$('.collapse.in').collapse('hide');
+	});
+</script>
+{{ end }}
+{{ define "footer" }}
+Last refresh from wiki: {{.LastRefresh | time | html}} | Last successful scan: {{.LastScan | time | html}}
+{{ end }}
