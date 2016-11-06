@@ -143,14 +143,7 @@ func parseNode(nodeString string) *toxNode {
 	var node *toxNode
 
 	if port, err := strconv.Atoi(lineParts[3]); err == nil && len(lineParts) == 8 {
-		ip4, err := net.ResolveIPAddr("ip4", lineParts[1])
-		if err != nil {
-			fmt.Printf("couldn't resolve %s: %s\n", lineParts[1], err.Error())
-		}
-		ip6, err := net.ResolveIPAddr("ip6", lineParts[2])
-		if err != nil {
-			fmt.Printf("couldn't resolve %s: %s\n", lineParts[2], err.Error())
-		}
+		ip4, ip6 := resolveIPAddr(lineParts[1], lineParts[2])
 
 		node = &toxNode{
 			Ipv4Address: lineParts[1],
@@ -182,4 +175,18 @@ func parseNode(nodeString string) *toxNode {
 	}
 
 	return node
+}
+
+func resolveIPAddr(ip4String string, ip6String string) (*net.IPAddr, *net.IPAddr) {
+	ip4, err := net.ResolveIPAddr("ip4", ip4String)
+	if err != nil {
+		fmt.Printf("couldn't resolve %s: %s\n", ip4String, err.Error())
+	}
+
+	ip6, err := net.ResolveIPAddr("ip6", ip6String)
+	if err != nil {
+		fmt.Printf("couldn't resolve %s: %s\n", ip6String, err.Error())
+	}
+
+	return ip4, ip6
 }

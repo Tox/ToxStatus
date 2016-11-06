@@ -45,20 +45,8 @@ func init() {
 	var err error
 	ident, err = dht.NewIdent()
 	if err != nil {
-		panic(err)
+		log.Fatalf("error creating new dht identity: %s", err)
 	}
-
-	udpTransport, err = transport.NewUDPTransport("udp", ":33450")
-	if err != nil {
-		panic(err)
-	}
-	udpTransport.Handle(dht.PacketIDSendNodes, handleSendNodesPacket)
-	udpTransport.Handle(bootstrap.PacketIDBootstrapInfo, handleBootstrapInfoPacket)
-
-	/*tcpTransport, err = transport.NewTCPTransport("tcp", ":33450")
-	if err != nil {
-		panic(err)
-	}*/
 }
 
 func main() {
@@ -69,6 +57,19 @@ func main() {
 	if err := loadCountries(); err != nil {
 		log.Fatalf("error loading countries.json: %s", err.Error())
 	}
+
+	var err error
+	udpTransport, err = transport.NewUDPTransport("udp", ":33450")
+	if err != nil {
+		log.Fatalf("error creating new udp transport instance: %s", err)
+	}
+	udpTransport.Handle(dht.PacketIDSendNodes, handleSendNodesPacket)
+	udpTransport.Handle(bootstrap.PacketIDBootstrapInfo, handleBootstrapInfoPacket)
+
+	/*tcpTransport, err = transport.NewTCPTransport("tcp", ":33450")
+	if err != nil {
+		panic(err)
+	}*/
 
 	//handle stop signal
 	interruptChan := make(chan os.Signal)
