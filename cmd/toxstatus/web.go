@@ -101,7 +101,7 @@ func handleTestRequest(w http.ResponseWriter, r *http.Request) {
 
 	err := r.ParseForm()
 	if err != nil {
-		http.Error(w, http.StatusText(500), 500)
+		http.Error(w, "unable to parse the form", 500)
 		return
 	}
 
@@ -111,13 +111,13 @@ func handleTestRequest(w http.ResponseWriter, r *http.Request) {
 
 	ipPortParts := strings.Split(ipPort, ":")
 	if len(ipPortParts) != 2 {
-		http.Error(w, http.StatusText(500), 500)
+		http.Error(w, "invalid ip:port submission", 500)
 		return
 	}
 
 	port, err := strconv.Atoi(ipPortParts[1])
 	if err != nil {
-		http.Error(w, http.StatusText(500), 500)
+		http.Error(w, "specified port is not an int", 500)
 		return
 	}
 
@@ -144,7 +144,7 @@ func handleTestRequest(w http.ResponseWriter, r *http.Request) {
 	case "TCP":
 		err = probeNodeTCP(&node)
 	default:
-		http.Error(w, http.StatusText(500), 500)
+		http.Error(w, "invalid net type", 500)
 		return
 	}
 
