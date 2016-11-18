@@ -175,7 +175,9 @@ func writeJSONResponse(w http.ResponseWriter, content interface{}) {
 }
 
 func parseNodes() ([]*toxNode, error) {
-	res, err := http.Get(wikiURI)
+	client := http.Client{}
+	client.Timeout = 5 * time.Second
+	res, err := client.Get(wikiURI)
 	if err != nil {
 		return nil, err
 	}
