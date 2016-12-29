@@ -23,12 +23,6 @@ import (
 	"github.com/didip/tollbooth"
 )
 
-type instance struct {
-	UDPTransport *transport.UDPTransport
-	TCPTransport *transport.TCPTransport
-	Ident        *dht.Ident
-}
-
 const (
 	enableIpv6  = true
 	probeRate   = 1 * time.Minute
@@ -40,8 +34,6 @@ var (
 	lastRefresh int64
 	nodes       = []*toxNode{}
 	nodesMutex  = sync.Mutex{}
-	pings       = new(ping.Collection)
-	pingsMutex  = sync.Mutex{}
 	tcpPorts    = []int{443, 3389, 33445}
 )
 
@@ -54,29 +46,12 @@ func main() {
 		log.Fatalf("error loading countries.json: %s", err.Error())
 	}
 
-	inst := instance{}
-	{
-		var err error
-		ident, err := dht.NewIdent()
-		if err != nil {
-			log.Fatalf("error creating new dht identity: %s", err)
-		}
-		inst.Ident = ident
-
-		udpTransport, err := transport.NewUDPTransport("udp", ":33450")
-		if err != nil {
-			log.Fatalf("error creating new udp transport instance: %s", err)
-		}
-		udpTransport.Handle(dht.PacketIDSendNodes, inst.handleSendNodesPacket)
-		udpTransport.Handle(bootstrap.PacketIDBootstrapInfo, handleBootstrapInfoPacket)
-		inst.UDPTransport = udpTransport
-
-		/*tcpTransport, err = transport.NewTCPTransport("tcp", ":33450")
-		if err != nil {
-			panic(err)
-		}
-		inst.TCPTransport = tcpTransport*/
+	inst, err := NewInstance(":33450")
+	if err != nil {
+		log.Fatalf("fatal: %s", err.Error())
 	}
+	inst.UDPTransport.Handle(dht.PacketIDSendNodes, inst.handleSendNodesPacket)
+	inst.UDPTransport.Handle(bootstrap.PacketIDBootstrapInfo, handleBootstrapInfoPacket)
 
 	//handle stop signal
 	interruptChan := make(chan os.Signal)
@@ -136,9 +111,9 @@ func main() {
 			run = false
 		case <-probeTicker.C:
 			// we want an empty ping list at the start of every probe
-			pingsMutex.Lock()
-			pings.Clear(false)
-			pingsMutex.Unlock()
+			inst.PingsMutex.Lock()
+			inst.Pings.Clear(false)
+			inst.PingsMutex.Unlock()
 
 			nodesMutex.Lock()
 			err := inst.probeNodes()
@@ -152,9 +127,9 @@ func main() {
 				log.Printf("error while trying to refresh nodes: %s", err.Error())
 			}
 		case <-updateTicker.C:
-			pingsMutex.Lock()
-			pings.Clear(true)
-			pingsMutex.Unlock()
+			inst.PingsMutex.Lock()
+			inst.Pings.Clear(true)
+			inst.PingsMutex.Unlock()
 
 			nodesMutex.Lock()
 			for _, node := range nodes {
@@ -214,12 +189,12 @@ func (i *instance) probeNodes() error {
 			fmt.Println(err.Error())
 		}
 
-		pingsMutex.Lock()
-		err = pings.Add(p)
+		i.PingsMutex.Lock()
+		err = i.Pings.Add(p)
 		if err != nil {
 			fmt.Println(err.Error())
 		}
-		pingsMutex.Unlock()
+		i.PingsMutex.Unlock()
 
 		ports := tcpPorts
 		exists := false
@@ -469,9 +444,9 @@ func (i *instance) handleSendNodesPacket(msg *transport.Message) error {
 		return nil
 	}
 
-	pingsMutex.Lock()
+	i.PingsMutex.Lock()
 	nodesMutex.Lock()
-	if pings.Find(dhtPacket.SenderPublicKey, packet.PingID, true) != nil {
+	if i.Pings.Find(dhtPacket.SenderPublicKey, packet.PingID, true) != nil {
 		for _, node := range nodes {
 			publicKey, err := hex.DecodeString(node.PublicKey)
 			if err != nil {
@@ -486,7 +461,7 @@ func (i *instance) handleSendNodesPacket(msg *transport.Message) error {
 		}
 	}
 	sort.Stable(nodeSlice(nodes))
-	pingsMutex.Unlock()
+	i.PingsMutex.Unlock()
 	nodesMutex.Unlock()
 
 	return nil

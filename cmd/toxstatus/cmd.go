@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/Impyy/tox4go/dht"
-	"github.com/Impyy/tox4go/dht/ping"
 	"github.com/Impyy/tox4go/transport"
 )
 
@@ -63,21 +62,10 @@ func parseFlags() bool {
 func probeNode(node *toxNode) error {
 	resChan := make(chan bool, 1)
 	timeoutChan := time.NewTimer(time.Second * 2)
-	pings := ping.NewCollection()
 
-	inst := instance{}
-	{
-		ident, err := dht.NewIdent()
-		if err != nil {
-			return err
-		}
-		inst.Ident = ident
-
-		udpTransport, err := transport.NewUDPTransport("udp", "")
-		if err != nil {
-			return err
-		}
-		inst.UDPTransport = udpTransport
+	inst, err := NewInstance("")
+	if err != nil {
+		return err
 	}
 
 	inst.UDPTransport.Handle(dht.PacketIDSendNodes, func(msg *transport.Message) error {
@@ -97,7 +85,7 @@ func probeNode(node *toxNode) error {
 			return nil
 		}
 
-		resChan <- pings.Find(dhtPacket.SenderPublicKey, packet.PingID, true) != nil
+		resChan <- inst.Pings.Find(dhtPacket.SenderPublicKey, packet.PingID, true) != nil
 		return nil
 	})
 	go inst.UDPTransport.Listen()
@@ -107,7 +95,7 @@ func probeNode(node *toxNode) error {
 	if err != nil {
 		return err
 	}
-	if err = pings.Add(p); err != nil {
+	if err = inst.Pings.Add(p); err != nil {
 		return err
 	}
 
