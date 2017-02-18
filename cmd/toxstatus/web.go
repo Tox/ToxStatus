@@ -247,15 +247,16 @@ func parseNode(nodeString string) *toxNode {
 }
 
 func resolveIPAddr(ip4String string, ip6String string) (*net.IPAddr, *net.IPAddr) {
-	ip4, err := net.ResolveIPAddr("ip4", ip4String)
-	if err != nil {
-		fmt.Printf("couldn't resolve %s: %s\n", ip4String, err.Error())
+	resolve := func(network string, ipString string) *net.IPAddr {
+		if ipString != "NONE" {
+			ip, err := net.ResolveIPAddr(network, ipString)
+			if err != nil {
+				fmt.Printf("couldn't resolve %s: %s\n", ip4String, err.Error())
+			}
+			return ip
+		}
+		return nil
 	}
 
-	ip6, err := net.ResolveIPAddr("ip6", ip6String)
-	if err != nil {
-		fmt.Printf("couldn't resolve %s: %s\n", ip6String, err.Error())
-	}
-
-	return ip4, ip6
+	return resolve("ip4", ip4String), resolve("ip6", ip6String)
 }
