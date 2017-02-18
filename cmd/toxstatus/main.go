@@ -187,14 +187,14 @@ func (i *instance) probeNodes() error {
 		p, err := i.getNodes(node)
 		if err != nil {
 			fmt.Println(err.Error())
+		} else {
+			i.PingsMutex.Lock()
+			err = i.Pings.Add(p)
+			if err != nil {
+				fmt.Println(err.Error())
+			}
+			i.PingsMutex.Unlock()
 		}
-
-		i.PingsMutex.Lock()
-		err = i.Pings.Add(p)
-		if err != nil {
-			fmt.Println(err.Error())
-		}
-		i.PingsMutex.Unlock()
 
 		ports := tcpPorts
 		exists := false
