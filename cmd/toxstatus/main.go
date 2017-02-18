@@ -42,6 +42,15 @@ func main() {
 		return
 	}
 
+	// load state if available
+	state, err := loadState()
+	if err != nil {
+		log.Fatalf("error loading state: %s", err.Error())
+	}
+	lastScan = state.LastScan
+	lastRefresh = state.LastRefresh
+	nodes = state.Nodes
+
 	if err := loadCountries(); err != nil {
 		log.Fatalf("error loading countries.json: %s", err.Error())
 	}
@@ -138,6 +147,9 @@ func main() {
 				}
 			}
 			sort.Stable(nodeSlice(nodes))
+
+			state := getState()
+			saveState(state)
 			nodesMutex.Unlock()
 		}
 	}

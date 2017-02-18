@@ -75,7 +75,7 @@ func handleHTTPRequest(w http.ResponseWriter, r *http.Request) {
 	var filename string
 	switch r.URL.Path {
 	case "/":
-		content = toxStatus{lastScan, lastRefresh, nodes}
+		content = getState()
 		fallthrough
 	case "/test", "/about":
 		filename = urlPath + ".html"
@@ -159,7 +159,7 @@ func handleTestRequest(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleJSONRequest(w http.ResponseWriter, r *http.Request) {
-	content := toxStatus{lastScan, lastRefresh, nodes}
+	content := getState()
 	writeJSONResponse(w, content)
 }
 
