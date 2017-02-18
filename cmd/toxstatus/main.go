@@ -151,7 +151,6 @@ func refreshNodes() error {
 
 	nodesMutex.Lock()
 	for _, freshNode := range parsedNodes {
-		found := false
 		for i, node := range nodes {
 			if freshNode.PublicKey == node.PublicKey {
 				freshNode.LastPing = node.LastPing
@@ -161,15 +160,11 @@ func refreshNodes() error {
 				freshNode.MOTD = node.MOTD
 				freshNode.Version = node.Version
 				nodes[i] = freshNode
-				found = true
 				break
 			}
 		}
-
-		if !found {
-			nodes = append(nodes, freshNode)
-		}
 	}
+	nodes = parsedNodes
 	sort.Stable(nodeSlice(nodes))
 	nodesMutex.Unlock()
 
