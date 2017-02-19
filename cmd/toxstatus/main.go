@@ -242,16 +242,17 @@ func (i *instance) probeNodeTCPPorts(node *toxNode, ports []int) {
 		}(port)
 	}
 
-	nodesMutex.Lock()
-	node.TCPPorts = []int{}
-
+	newPorts := []int{}
 	for i := 0; i < len(ports); i++ {
 		port := <-c
 		if port != -1 {
 			fmt.Printf("tcp port for %s: %d\n", node.Maintainer, port)
-			node.TCPPorts = append(node.TCPPorts, port)
+			newPorts = append(newPorts, port)
 		}
 	}
+
+	nodesMutex.Lock()
+	node.TCPPorts = newPorts
 	if len(node.TCPPorts) > 0 {
 		node.LastPing = time.Now().Unix()
 	}
