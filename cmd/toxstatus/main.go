@@ -452,23 +452,29 @@ func (i *instance) handleSendNodesPacket(msg *transport.Message) error {
 	}
 
 	i.PingsMutex.Lock()
-	nodesMutex.Lock()
-	if i.Pings.Find(dhtPacket.SenderPublicKey, packet.PingID, true) != nil {
-		for _, node := range nodes {
-			publicKey, err := hex.DecodeString(node.PublicKey)
-			if err != nil {
-				continue
-			}
+	ping := i.Pings.Find(dhtPacket.SenderPublicKey, packet.PingID, true)
+	i.PingsMutex.Unlock()
 
-			if bytes.Equal(publicKey, dhtPacket.SenderPublicKey[:]) {
-				node.UDPStatus = true
-				node.LastPing = time.Now().Unix()
-				break
-			}
+	if ping == nil {
+		err := fmt.Errorf("sendnodes packet from unknown node: %s:%d", msg.Addr.IP, msg.Addr.Port)
+		fmt.Printf("error: %s", err.Error())
+		return err
+	}
+
+	nodesMutex.Lock()
+	for _, node := range nodes {
+		publicKey, err := hex.DecodeString(node.PublicKey)
+		if err != nil {
+			continue
+		}
+
+		if bytes.Equal(publicKey, dhtPacket.SenderPublicKey[:]) {
+			node.UDPStatus = true
+			node.LastPing = time.Now().Unix()
+			break
 		}
 	}
 	sort.Stable(nodeSlice(nodes))
-	i.PingsMutex.Unlock()
 	nodesMutex.Unlock()
 
 	return nil
