@@ -299,7 +299,7 @@ func (i *instance) tcpHandshake(node *toxNode, conn *net.TCPConn) error {
 		return err
 	}
 
-	conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	conn.SetDeadline(time.Now().Add(2 * time.Second))
 	_, err = conn.Write(reqPacketBytes)
 	if err != nil {
 		return err
