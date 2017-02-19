@@ -163,7 +163,7 @@ func refreshNodes() error {
 
 	nodesMutex.Lock()
 	for _, freshNode := range parsedNodes {
-		for i, node := range nodes {
+		for _, node := range nodes {
 			if freshNode.PublicKey == node.PublicKey {
 				freshNode.LastPing = node.LastPing
 				freshNode.UDPStatus = node.UDPStatus
@@ -171,7 +171,6 @@ func refreshNodes() error {
 				freshNode.TCPPorts = node.TCPPorts
 				freshNode.MOTD = node.MOTD
 				freshNode.Version = node.Version
-				nodes[i] = freshNode
 				break
 			}
 		}
