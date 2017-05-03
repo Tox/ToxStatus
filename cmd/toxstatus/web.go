@@ -107,22 +107,21 @@ func handleTestRequest(w http.ResponseWriter, r *http.Request) {
 
 	ipPort := r.Form.Get("ipPort")
 	key := r.Form.Get("key")
-	net := r.Form.Get("net")
+	proto := r.Form.Get("net")
 
-	ipPortParts := strings.Split(ipPort, ":")
-	if len(ipPortParts) != 2 {
+	host, portString, err := net.SplitHostPort(ipPort)
+	if err != nil {
 		http.Error(w, "invalid ip:port submission", 500)
 		return
 	}
 
-	port, err := strconv.Atoi(ipPortParts[1])
+	port, err := strconv.Atoi(portString)
 	if err != nil {
 		http.Error(w, "specified port is not an int", 500)
 		return
 	}
 
-	ip := ipPortParts[0]
-	ip4, ip6 := resolveIPAddr(ip, ip)
+	ip4, ip6 := resolveIPAddr(host, host)
 	node := toxNode{
 		PublicKey: key,
 		Port:      port,
@@ -138,7 +137,7 @@ func handleTestRequest(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 	content := testStatus{Success: true}
 
-	switch net {
+	switch proto {
 	case "UDP":
 		err = probeNode(&node)
 	case "TCP":
