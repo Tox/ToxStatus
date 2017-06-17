@@ -11,7 +11,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/Impyy/tox4go/transport"
+	"github.com/alexbakker/tox4go/transport"
 )
 
 const (

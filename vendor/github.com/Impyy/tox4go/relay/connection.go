@@ -3,8 +3,8 @@ package relay
 import (
 	"errors"
 
-	"github.com/Impyy/tox4go/crypto"
-	"github.com/Impyy/tox4go/transport"
+	"github.com/alexbakker/tox4go/crypto"
+	"github.com/alexbakker/tox4go/transport"
 )
 
 type Connection struct {

@@ -3,7 +3,7 @@ package ping
 import (
 	"time"
 
-	"github.com/Impyy/tox4go/crypto"
+	"github.com/alexbakker/tox4go/crypto"
 )
 
 const (

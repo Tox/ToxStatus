@@ -2,16 +2,16 @@
 	"version": 0,
 	"dependencies": [
 		{
-			"importpath": "github.com/Impyy/go-embed",
-			"repository": "https://github.com/Impyy/go-embed",
+			"importpath": "github.com/alexbakker/go-embed",
+			"repository": "https://github.com/alexbakker/go-embed",
 			"vcs": "",
 			"revision": "845f3d77900cb2fcbd242e7fa93d6464f5caf0cc",
 			"branch": "master",
 			"notests": true
 		},
 		{
-			"importpath": "github.com/Impyy/tox4go/bootstrap",
-			"repository": "https://github.com/Impyy/tox4go",
+			"importpath": "github.com/alexbakker/tox4go/bootstrap",
+			"repository": "https://github.com/alexbakker/tox4go",
 			"vcs": "",
 			"revision": "5bc69ab94c144c8acc5f482cb7718054c8c9b071",
 			"branch": "master",
@@ -19,8 +19,8 @@
 			"notests": true
 		},
 		{
-			"importpath": "github.com/Impyy/tox4go/crypto",
-			"repository": "https://github.com/Impyy/tox4go",
+			"importpath": "github.com/alexbakker/tox4go/crypto",
+			"repository": "https://github.com/alexbakker/tox4go",
 			"vcs": "",
 			"revision": "5bc69ab94c144c8acc5f482cb7718054c8c9b071",
 			"branch": "master",
@@ -28,8 +28,8 @@
 			"notests": true
 		},
 		{
-			"importpath": "github.com/Impyy/tox4go/dht",
-			"repository": "https://github.com/Impyy/tox4go",
+			"importpath": "github.com/alexbakker/tox4go/dht",
+			"repository": "https://github.com/alexbakker/tox4go",
 			"vcs": "git",
 			"revision": "185f036750f1c882109c44369056866ee3b17975",
 			"branch": "master",
@@ -37,8 +37,8 @@
 			"notests": true
 		},
 		{
-			"importpath": "github.com/Impyy/tox4go/relay",
-			"repository": "https://github.com/Impyy/tox4go",
+			"importpath": "github.com/alexbakker/tox4go/relay",
+			"repository": "https://github.com/alexbakker/tox4go",
 			"vcs": "",
 			"revision": "5bc69ab94c144c8acc5f482cb7718054c8c9b071",
 			"branch": "master",
@@ -46,8 +46,8 @@
 			"notests": true
 		},
 		{
-			"importpath": "github.com/Impyy/tox4go/transport",
-			"repository": "https://github.com/Impyy/tox4go",
+			"importpath": "github.com/alexbakker/tox4go/transport",
+			"repository": "https://github.com/alexbakker/tox4go",
 			"vcs": "",
 			"revision": "5bc69ab94c144c8acc5f482cb7718054c8c9b071",
 			"branch": "master",

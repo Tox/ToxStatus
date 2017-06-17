@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/Impyy/tox4go/dht"
-	"github.com/Impyy/tox4go/dht/ping"
-	"github.com/Impyy/tox4go/transport"
+	"github.com/alexbakker/tox4go/dht"
+	"github.com/alexbakker/tox4go/dht/ping"
+	"github.com/alexbakker/tox4go/transport"
 )
 
 type instance struct {

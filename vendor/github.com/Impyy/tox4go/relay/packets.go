@@ -3,7 +3,7 @@ package relay
 import (
 	"bytes"
 
-	"github.com/Impyy/tox4go/crypto"
+	"github.com/alexbakker/tox4go/crypto"
 )
 
 type Packet struct {

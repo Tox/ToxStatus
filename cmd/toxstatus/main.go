@@ -14,12 +14,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Impyy/tox4go/bootstrap"
-	"github.com/Impyy/tox4go/crypto"
-	"github.com/Impyy/tox4go/dht"
-	"github.com/Impyy/tox4go/dht/ping"
-	"github.com/Impyy/tox4go/relay"
-	"github.com/Impyy/tox4go/transport"
+	"github.com/alexbakker/tox4go/bootstrap"
+	"github.com/alexbakker/tox4go/crypto"
+	"github.com/alexbakker/tox4go/dht"
+	"github.com/alexbakker/tox4go/dht/ping"
+	"github.com/alexbakker/tox4go/relay"
+	"github.com/alexbakker/tox4go/transport"
 	"github.com/didip/tollbooth"
 )
 
