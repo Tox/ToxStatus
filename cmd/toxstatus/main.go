@@ -67,7 +67,7 @@ func main() {
 	signal.Notify(interruptChan, os.Interrupt)
 
 	//setup http server
-	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", httpListenPort))
+	listener, err := net.Listen("tcp4", fmt.Sprintf("localhost:%d", httpListenPort))
 	if err != nil {
 		log.Fatalf("error in net.Listen: %s", err.Error())
 	}
