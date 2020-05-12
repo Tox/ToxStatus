@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"encoding/csv"
 	"fmt"
 	"io/ioutil"
 	"net"
@@ -162,6 +163,11 @@ func handleJSONRequest(w http.ResponseWriter, r *http.Request) {
 	writeJSONResponse(w, content)
 }
 
+func handleCSVRequest(w http.ResponseWriter, r *http.Request) {
+	content := getState()
+	writeCSVResponse(w, content)
+}
+
 func writeJSONResponse(w http.ResponseWriter, content interface{}) {
 	bytes, err := json.Marshal(content)
 	if err != nil {
@@ -171,6 +177,28 @@ func writeJSONResponse(w http.ResponseWriter, content interface{}) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(bytes)
+}
+
+
+func writeCSVResponse(w http.ResponseWriter, content *toxStatus) {
+	w.Header().Set("Content-Type", "text/csv")
+  w2 := csv.NewWriter(w)
+  for _, obj := range content.Nodes {
+    var record []string
+    record = append(record, obj.Ipv4Address)
+    record = append(record, obj.Ipv6Address)
+    record = append(record, strconv.Itoa(obj.Port))
+    record = append(record, obj.PublicKey)
+    record = append(record, obj.Maintainer)
+    record = append(record, obj.Location)
+    record = append(record, strconv.FormatBool(obj.UDPStatus))
+    record = append(record, strconv.FormatBool(obj.TCPStatus))
+    record = append(record, obj.Version)
+    record = append(record, obj.MOTD)
+    record = append(record, strconv.FormatInt(obj.LastPing, 10))
+    w2.Write(record)
+  }
+  w2.Flush()
 }
 
 func parseNodes() ([]*toxNode, error) {

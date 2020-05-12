@@ -78,6 +78,7 @@ func main() {
 	serveMux.HandleFunc("/", handleHTTPRequest)
 	serveMux.Handle("/test", tollbooth.LimitFuncHandler(limiter, handleHTTPRequest))
 	serveMux.HandleFunc("/json", handleJSONRequest)
+	serveMux.HandleFunc("/csv", handleCSVRequest)
 	go func() {
 		err := http.Serve(listener, serveMux)
 		if err != nil {
