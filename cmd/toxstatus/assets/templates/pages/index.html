@@ -22,17 +22,17 @@
 		</thead>
 		<tbody>
 			{{ range .Nodes }}
-			<tr class="collapsed" data-parent="#accordion" data-toggle="collapse" data-target="#collapse{{.PublicKey | html}}">
+			<tr class="collapsed" data-parent="#accordion" data-toggle="collapse" data-target="#collapse{{.PublicKey}}">
 				<td>
 				{{ if ne .Location "" }}
-				<img src="/img/flags/{{.Location | html | lower}}.png" title="{{.Location | loc | html}}" style="position:relative;top:50%;transform:translateY(45%);"/>
+				<img src="/img/flags/{{.Location | lower}}.png" title="{{.Location | loc}}" style="position:relative;top:50%;transform:translateY(45%);"/>
 				{{ end }}
 				</td>
-				<td>{{ .Ipv4Address | html }}</td>
-				<td>{{ .Ipv6Address | html }}</td>
-				<td>{{ .Port | html }}</td>
-				<td>{{ .PublicKey | html }}</td>
-				<td>{{ .Maintainer | html }}</td>
+				<td>{{ .Ipv4Address }}</td>
+				<td>{{ .Ipv6Address }}</td>
+				<td>{{ .Port }}</td>
+				<td>{{ .PublicKey }}</td>
+				<td>{{ .Maintainer }}</td>
 				{{ if .UDPStatus}}
 				<td>
 					<span style="color:green">ONLINE</span>
@@ -47,18 +47,18 @@
 				</td>
 				{{ end }}
 			</tr>
-			<tr class="collapse" id="collapse{{.PublicKey | html}}">
+			<tr class="collapse" id="collapse{{.PublicKey}}">
 				<td colspan="7">
 					<div class="col-md-2">
 						<dl>
 							<dt>Location</dt>
-							<dd>{{ .Location | loc | html }}</dd>
+							<dd>{{ .Location | loc }}</dd>
 						</dl>
 					</div>
 					<div class="col-md-2">
 						<dl>
 							<dt>Last Ping</dt>
-							<dd>{{ .LastPing | since | html }}</dd>
+							<dd>{{ .LastPing | since }}</dd>
 						</dl>
 					</div>
 					<div class="col-md-2">
@@ -84,13 +84,13 @@
 					<div class="col-md-2">
 						<dl>
 							<dt>Version</dt>
-							<dd>{{ .Version | html }}</dd>
+							<dd>{{ .Version }}</dd>
 						</dl>
 					</div>
 					<div class="col-md-4">
 						<dl>
 							<dt>MOTD</dt>
-							<dd style="white-space: pre-wrap;word-wrap: break-word;">{{ .MOTD | html }}</dd>
+							<dd style="white-space: pre-wrap;word-wrap: break-word;">{{ .MOTD }}</dd>
 						</dl>
 					</div>
 					{{ end }}
@@ -124,5 +124,5 @@
 </script>
 {{ end }}
 {{ define "footer" }}
-Last refresh from wiki: {{.LastRefresh | time | html}} | Last successful scan: {{.LastScan | time | html}}
+Last refresh from wiki: {{.LastRefresh | time}} | Last successful scan: {{.LastScan | time}}
 {{ end }}
