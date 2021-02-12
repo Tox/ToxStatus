@@ -420,8 +420,15 @@ func connectTCP(node *toxNode, port int) (*net.TCPConn, error) {
 
 	dialer := net.Dialer{}
 	dialer.Deadline = time.Now().Add(2 * time.Second)
+	fmtIp := ""
+	if (ip.To4() == nil) {
+		// Wrap IPv6 in brackets
+		fmtIp = fmt.Sprintf("[%s]:%d", ip, port)
+	} else {
+		fmtIp = fmt.Sprintf("%s:%d", ip, port)
+	}
 
-	tempConn, err := dialer.Dial("tcp", fmt.Sprintf("%s:%d", ip, port))
+	tempConn, err := dialer.Dial("tcp", fmtIp)
 	if err != nil {
 		return nil, err
 	}
