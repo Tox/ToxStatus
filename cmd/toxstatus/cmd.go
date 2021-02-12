@@ -31,8 +31,12 @@ func parseFlags() bool {
 
 	ip4, ip6 := resolveIPAddr(*ipFlag, *ipFlag)
 	node := toxNode{}
-	node.ip4 = ip4.IP
-	node.ip6 = ip6.IP
+	if ip4 != nil {
+		node.ip4 = ip4.IP
+	}
+	if ip6 != nil {
+		node.ip6 = ip6.IP
+	}
 	node.PublicKey = *keyFlag
 	node.Port = *portFlag
 
