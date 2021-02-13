@@ -5,7 +5,10 @@ Status page written in Go that keeps track of Tox bootstrap nodes.
 The entire codebase is licensed under [AGPL](LICENSE) unless stated otherwise.
 
 ## Screenshots
-![](https://alexbakker.me/u/1kaahfhzda.png)
+
+![](https://alexbakker.me/u/hbxed4cdsk.png)
+
+![](https://alexbakker.me/u/a3jyllwn9v.png)
 
 ## Tool
 
