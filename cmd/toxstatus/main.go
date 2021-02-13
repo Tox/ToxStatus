@@ -20,7 +20,8 @@ import (
 	"github.com/alexbakker/tox4go/dht/ping"
 	"github.com/alexbakker/tox4go/relay"
 	"github.com/alexbakker/tox4go/transport"
-	"github.com/didip/tollbooth"
+	"github.com/didip/tollbooth/v6"
+	"github.com/didip/tollbooth/v6/limiter"
 )
 
 const (
@@ -71,9 +72,9 @@ func main() {
 	if err != nil {
 		log.Fatalf("error in net.Listen: %s", err.Error())
 	}
-	limiter := tollbooth.NewLimiter(1, 2*time.Second)
-	limiter.Methods = []string{"POST"}
-	limiter.IPLookups = []string{"X-Forwarded-For", "RemoteAddr", "X-Real-IP"}
+	limiter := tollbooth.NewLimiter(1, &limiter.ExpirableOptions{DefaultExpirationTTL: 2 * time.Second})
+	limiter.SetMethods([]string{"POST"})
+	limiter.SetIPLookups([]string{"X-Forwarded-For", "RemoteAddr", "X-Real-IP"})
 	serveMux := http.NewServeMux()
 	serveMux.HandleFunc("/", handleHTTPRequest)
 	serveMux.Handle("/test", tollbooth.LimitFuncHandler(limiter, handleHTTPRequest))
