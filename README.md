@@ -1,4 +1,4 @@
-# ToxStatus [![Build Status](https://travis-ci.org/Tox/ToxStatus.svg?branch=master)](https://travis-ci.org/Tox/ToxStatus)
+# ToxStatus ![build](https://github.com/Tox/ToxStatus/workflows/build/badge.svg)
 
 Status page written in Go that keeps track of Tox bootstrap nodes.
 
