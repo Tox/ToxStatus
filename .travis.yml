@@ -1,4 +1,6 @@
 language: go
 
 go:
-  - 1.7
+  - "1.15"
+
+go_import_path: "github.com/Tox/ToxStatus"
