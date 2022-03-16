@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"net"
 	"net/http"
+	"path"
 	"strconv"
 	"strings"
 	"time"
@@ -50,14 +51,11 @@ var (
 	countries map[string]string
 )
 
-func loadCountries() error {
-	const name = "countries.json"
-	bytes, ok := assetMap[name]
-	if !ok {
-		return fmt.Errorf("asset %s not found", name)
+func init() {
+	bytes := mustGetAssetBytes("assets/countries.json")
+	if err := json.Unmarshal(bytes, &countries); err != nil {
+		panic(fmt.Errorf("unable to parse countries: %w", err))
 	}
-
-	return json.Unmarshal(bytes, &countries)
 }
 
 func handleHTTPRequest(w http.ResponseWriter, r *http.Request) {
@@ -80,8 +78,8 @@ func handleHTTPRequest(w http.ResponseWriter, r *http.Request) {
 	case "/test", "/about":
 		filename = urlPath + ".html"
 	default:
-		data, ok := assetMap[urlPath]
-		if !ok {
+		data, err := getAssetBytes(path.Join("assets", urlPath))
+		if err != nil {
 			http.Error(w, http.StatusText(404), 404)
 		} else {
 			w.Header().Set("Content-Type", mimeTypeByExtension(urlPath))

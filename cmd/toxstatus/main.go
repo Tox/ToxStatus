@@ -52,10 +52,6 @@ func main() {
 	lastRefresh = state.LastRefresh
 	nodes = state.Nodes
 
-	if err := loadCountries(); err != nil {
-		log.Fatalf("error loading countries.json: %s", err.Error())
-	}
-
 	inst, err := NewInstance(":33450")
 	if err != nil {
 		log.Fatalf("fatal: %s", err.Error())
@@ -422,7 +418,7 @@ func connectTCP(node *toxNode, port int) (*net.TCPConn, error) {
 	dialer := net.Dialer{}
 	dialer.Deadline = time.Now().Add(2 * time.Second)
 	fmtIp := ""
-	if (ip.To4() == nil) {
+	if ip.To4() == nil {
 		// Wrap IPv6 in brackets
 		fmtIp = fmt.Sprintf("[%s]:%d", ip, port)
 	} else {
