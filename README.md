@@ -1,8 +1,10 @@
 # ToxStatus ![build](https://github.com/Tox/ToxStatus/workflows/build/badge.svg)
 
-Status page written in Go that keeps track of Tox bootstrap nodes.
+Status page for the [Tox](https://tox.chat/) network that keeps track of
+bootstrap nodes.
 
-The entire codebase is licensed under [AGPL](LICENSE) unless stated otherwise.
+The master branch is currently in a __WIP__ state. The latest stable version is
+[v1.0.0](https://github.com/Tox/ToxStatus/releases/tag/v1.0.0).
 
 ## Screenshots
 
@@ -12,7 +14,8 @@ The entire codebase is licensed under [AGPL](LICENSE) unless stated otherwise.
 
 ## Tool
 
-Besides being a full status page, ToxStatus can also be used as a command line tool to quickly check the status of a node.
+Besides being a full status page, ToxStatus can also be used as a command line
+tool to quickly check the status of a node.
 
 ```none
 ~> ./ToxStatus --help
