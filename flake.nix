@@ -14,12 +14,15 @@
           src = ./.;
 
           subPackages = [ "cmd/toxstatus" ];
-          vendorHash = "sha256-7Z/ShmVKlx64xH0JiDv97y/KbEDw8IOUJJ2h02h+zRE=";
+          vendorHash = "sha256-GiGIJfR0isa9C+uLz08zyJ0FL6Soj4SlFSf3TJYQsHE=";
         };
       };
       devShell = with pkgs; mkShell {
+        hardeningDisable = [ "fortify" ];
         buildInputs = [
           go
+          graphviz # for pprof
+          sqlite
         ];
       };
     }
