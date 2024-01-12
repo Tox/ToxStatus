@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
+	"net/http/pprof"
 	"os"
 	"os/signal"
 	"runtime"
@@ -29,6 +31,7 @@ var (
 	rootFlags = struct {
 		HTTPAddr          string
 		HTTPClientTimeout time.Duration
+		PprofAddr         string
 		ToxUDPAddr        string
 		DB                string
 		LogLevel          string
@@ -40,6 +43,7 @@ func init() {
 	const maxDefaultWorkers = 8
 	Root.Flags().StringVar(&rootFlags.HTTPAddr, "http-addr", ":8003", "the network address to listen on for the HTTP server")
 	Root.Flags().DurationVar(&rootFlags.HTTPClientTimeout, "http-client-timeout", 10*time.Second, "the http client timeout for requests to nodes.tox.chat")
+	Root.Flags().StringVar(&rootFlags.PprofAddr, "pprof-addr", "", "the network address to listen of for the pprof HTTP server")
 	Root.Flags().StringVar(&rootFlags.ToxUDPAddr, "tox-udp-addr", ":33450", "the UDP network address to listen on for Tox")
 	//root.Flags().StringVar(&rootFlags.DB, "db", "", "the sqlite database to use")
 	Root.Flags().StringVar(&rootFlags.LogLevel, "log-level", "info", "the log level to use")
@@ -59,6 +63,29 @@ func startRoot(cmd *cobra.Command, args []string) {
 		Level:   level,
 		NoColor: !isatty.IsTerminal(os.Stderr.Fd()),
 	}))
+
+	if rootFlags.PprofAddr != "" {
+		logger.Info("Starting pprof server")
+
+		l, err := net.Listen("tcp", rootFlags.PprofAddr)
+		if err != nil {
+			logErrorAndExit(logger, "Unable to start pprof server", slog.Any("err", err))
+			return
+		}
+
+		go func() {
+			mux := http.NewServeMux()
+			mux.HandleFunc("/debug/pprof/", pprof.Index)
+			mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+			mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
+			mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+			mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
+
+			if err := http.Serve(l, mux); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				logger.Error("Unable to run pprof server", slog.Any("err", err))
+			}
+		}()
+	}
 
 	cr, err := crawler.New(crawler.CrawlerOptions{
 		HTTPAddr:   rootFlags.HTTPAddr,
