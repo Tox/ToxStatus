@@ -11,6 +11,10 @@ jobs:
       - uses: DeterminateSystems/magic-nix-cache-action@8a218f9e264e9c3803c9a1ee1c30d8e4ab55be63
         with:
           diagnostic-endpoint:
+      - name: No diff
+        run: |
+          nix develop -c go generate ./...
+          git diff-index --quiet HEAD --
       - name: Build
         run: |
           nix build --print-build-logs
