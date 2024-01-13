@@ -8,6 +8,7 @@ require (
 	github.com/alexbakker/tox4go v0.0.0-20240112114532-507773af8be1
 	github.com/lmittmann/tint v1.0.3
 	github.com/mattn/go-isatty v0.0.20
+	github.com/mattn/go-sqlite3 v1.14.19
 	github.com/spf13/cobra v1.8.0
 	github.com/sqlc-dev/sqlc v1.25.0
 	golang.org/x/exp v0.0.0-20240112132812-db7319d0e0e3
@@ -32,7 +33,6 @@ require (
 	github.com/jackc/puddle/v2 v2.2.1 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/kballard/go-shellquote v0.0.0-20180428030007-95032a82bc51 // indirect
-	github.com/mattn/go-sqlite3 v1.14.19 // indirect
 	github.com/pganalyze/pg_query_go/v4 v4.2.4-0.20231205012101-7463430c7b73 // indirect
 	github.com/pganalyze/pg_query_go/v5 v5.1.0 // indirect
 	github.com/pingcap/errors v0.11.5-0.20210425183316-da1aaba5fb63 // indirect

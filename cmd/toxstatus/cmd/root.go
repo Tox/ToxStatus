@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -16,9 +17,12 @@ import (
 	"time"
 
 	"github.com/Tox/ToxStatus/internal/crawler"
+	"github.com/Tox/ToxStatus/internal/db"
+	"github.com/Tox/ToxStatus/internal/repo"
 	"github.com/alexbakker/tox4go/toxstatus"
 	"github.com/lmittmann/tint"
 	"github.com/mattn/go-isatty"
+	_ "github.com/mattn/go-sqlite3"
 	"github.com/spf13/cobra"
 )
 
@@ -45,13 +49,16 @@ func init() {
 	Root.Flags().DurationVar(&rootFlags.HTTPClientTimeout, "http-client-timeout", 10*time.Second, "the http client timeout for requests to nodes.tox.chat")
 	Root.Flags().StringVar(&rootFlags.PprofAddr, "pprof-addr", "", "the network address to listen of for the pprof HTTP server")
 	Root.Flags().StringVar(&rootFlags.ToxUDPAddr, "tox-udp-addr", ":33450", "the UDP network address to listen on for Tox")
-	//root.Flags().StringVar(&rootFlags.DB, "db", "", "the sqlite database to use")
+	Root.Flags().StringVar(&rootFlags.DB, "db", "", "the sqlite database to use")
 	Root.Flags().StringVar(&rootFlags.LogLevel, "log-level", "info", "the log level to use")
 	Root.Flags().IntVar(&rootFlags.Workers, "workers", min(maxDefaultWorkers, runtime.NumCPU()), "the amount of workers to use")
-	//Root.MarkFlagRequired("db")
+	Root.MarkFlagRequired("db")
 }
 
 func startRoot(cmd *cobra.Command, args []string) {
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+
 	var level slog.Level
 	if err := level.UnmarshalText([]byte(rootFlags.LogLevel)); err != nil {
 		fmt.Fprintf(os.Stderr, "bad log level: %s\n", rootFlags.LogLevel)
@@ -63,6 +70,18 @@ func startRoot(cmd *cobra.Command, args []string) {
 		Level:   level,
 		NoColor: !isatty.IsTerminal(os.Stderr.Fd()),
 	}))
+
+	dbConn, err := sql.Open("sqlite3", rootFlags.DB)
+	if err != nil {
+		logErrorAndExit(logger, "Unable to open db", slog.Any("err", err))
+		return
+	}
+	defer dbConn.Close()
+
+	if _, err := dbConn.ExecContext(ctx, db.Schema); err != nil {
+		logErrorAndExit(logger, "Unable to initialize db", slog.Any("err", err))
+		return
+	}
 
 	if rootFlags.PprofAddr != "" {
 		logger.Info("Starting pprof server")
@@ -87,18 +106,17 @@ func startRoot(cmd *cobra.Command, args []string) {
 		}()
 	}
 
-	cr, err := crawler.New(crawler.CrawlerOptions{
+	nodesRepo := repo.New(dbConn)
+	cr, err := crawler.New(nodesRepo, crawler.CrawlerOptions{
+		Logger:     logger,
 		HTTPAddr:   rootFlags.HTTPAddr,
 		ToxUDPAddr: rootFlags.ToxUDPAddr,
 		Workers:    rootFlags.Workers,
-	}, logger)
+	})
 	if err != nil {
 		logErrorAndExit(logger, "Unable to initialize Tox crawler", slog.Any("err", err))
 		return
 	}
-
-	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer cancel()
 
 	logger.Info("Querying nodes.tox.chat for bootstrap nodes")
 

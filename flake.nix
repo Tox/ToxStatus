@@ -14,7 +14,7 @@
           src = ./.;
 
           subPackages = [ "cmd/toxstatus" ];
-          vendorHash = "sha256-L+6o0GIxhgBR4H9J752QQV0JqHK1lnSFRtEN3R7J+4o=";
+          vendorHash = "sha256-cE8L7vuf3msMplL6BfQ4gt1rELMIFswDu9mfSXJ9VAs=";
         };
       };
       devShell = with pkgs; mkShell {

@@ -11,6 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Tox/ToxStatus/internal/repo"
 	"github.com/alexbakker/tox4go/dht"
 	"github.com/alexbakker/tox4go/dht/ping"
 	"github.com/alexbakker/tox4go/transport"
@@ -18,6 +19,7 @@ import (
 )
 
 type Crawler struct {
+	repo   *repo.NodesRepo
 	opts   CrawlerOptions
 	logger *slog.Logger
 
@@ -33,6 +35,7 @@ type Crawler struct {
 }
 
 type CrawlerOptions struct {
+	Logger     *slog.Logger
 	HTTPAddr   string
 	ToxUDPAddr string
 	Workers    int
@@ -48,7 +51,7 @@ type rawPacket struct {
 	Addr *net.UDPAddr
 }
 
-func New(opts CrawlerOptions, logger *slog.Logger) (*Crawler, error) {
+func New(nodesRepo *repo.NodesRepo, opts CrawlerOptions) (*Crawler, error) {
 	ident, err := dht.NewIdentity(dht.IdentityOptions{
 		// Large cache for precomputed shared keys to improve performance
 		SharedKeyCacheSize: 10000,
@@ -62,8 +65,9 @@ func New(opts CrawlerOptions, logger *slog.Logger) (*Crawler, error) {
 	}
 
 	c := &Crawler{
+		repo:       nodesRepo,
 		opts:       opts,
-		logger:     logger,
+		logger:     opts.Logger,
 		ident:      ident,
 		pings:      ping.NewSet(ping.DefaultTimeout),
 		nodes:      make(map[dht.PublicKey]*Node),
@@ -370,6 +374,10 @@ func (c *Crawler) handleSendNodesPacket(ctx context.Context, tp transport.Transp
 		newNode := Node{Node: node}
 		newNode.Pong()
 		c.nodes[*node.PublicKey] = &newNode
+
+		if _, err := c.repo.TrackDHTNode(ctx, node); err != nil {
+			c.logger.Error("Unable to track node", slog.Any("err", err))
+		}
 	}
 
 	var queryNodes []*Node
@@ -385,6 +393,10 @@ func (c *Crawler) handleSendNodesPacket(ctx context.Context, tp transport.Transp
 				slog.String("public_key", queryNode.PublicKey.String()),
 				slog.String("net", queryNode.Type.Net()),
 				slog.String("addr", queryNode.Addr().String()))
+
+			if _, err := c.repo.TrackDHTNode(ctx, node); err != nil {
+				c.logger.Error("Unable to track node", slog.Any("err", err))
+			}
 		}
 	}
 	c.m.Unlock()

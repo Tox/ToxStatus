@@ -1,0 +1,18 @@
+version: "2"
+sql:
+  - engine: "sqlite"
+    queries: "queries.sql"
+    schema: "schema.sql"
+    gen:
+      go:
+        package: "db"
+        out: "."
+        emit_result_struct_pointers: true
+        emit_params_struct_pointers: true
+        overrides:
+          - column: "*.*_at"
+            go_type:
+              type: "Time"
+          - column: "*.public_key"
+            go_type:
+              type: "*PublicKey"
