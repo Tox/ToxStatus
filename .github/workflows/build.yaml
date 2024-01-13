@@ -21,3 +21,10 @@ jobs:
       - name: Build
         run: |
           nix build --print-build-logs
+      - name: Check version number
+        if: startsWith(github.ref_name, 'v')
+        run: |
+          if ! ./result/bin/toxstatus version | grep -q '${{ github.ref_name }}'; then
+            echo "Version information doesn't match"
+            exit 1
+          fi
