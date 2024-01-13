@@ -15,6 +15,9 @@ jobs:
         run: |
           nix develop -c go generate ./...
           git diff-index --quiet HEAD --
+      - name: Test
+        run: |
+          nix develop -c go test ./... -v
       - name: Build
         run: |
           nix build --print-build-logs
