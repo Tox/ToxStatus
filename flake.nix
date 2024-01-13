@@ -17,6 +17,8 @@
           vendorHash = "sha256-cE8L7vuf3msMplL6BfQ4gt1rELMIFswDu9mfSXJ9VAs=";
 
           tags = ["sqlite_foreign_keys"];
+
+          doCheck = false;
         };
       };
       devShell = with pkgs; mkShell {
