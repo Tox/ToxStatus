@@ -14,7 +14,7 @@ jobs:
       - name: No diff
         run: |
           nix develop -c go generate ./...
-          git diff-index --quiet HEAD --
+          git diff --exit-code
       - name: Test
         run: |
           nix develop -c go test -tags sqlite_foreign_keys -v ./...
