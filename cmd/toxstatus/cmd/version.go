@@ -36,7 +36,7 @@ func startVersion(cmd *cobra.Command, args []string) {
 	}
 	fmt.Println()
 	fmt.Printf("sqlite: %s \n", sqliteVersion)
-	fmt.Println("https://github.com/Tox/ToxStatus (GPLv3)")
+	fmt.Println("https://github.com/Tox/ToxStatus (AGPLv3)")
 }
 
 func exitWithError(s string) {
