@@ -239,9 +239,9 @@ func (c *Crawler) Run(ctx context.Context, bsNodes []*dht.Node) error {
 		// TODO: Remove nodes that we haven't successfully pinged in a while
 		// Periodically query the nodes we know
 		pkgen := getPublicKeyGenerator(199)
-		var targetKeys []*dht.PublicKey
 		for {
 			c.logger.Info("Rotating target keys")
+			var targetKeys []*dht.PublicKey
 			for i := 0; i < 8; i++ {
 				key := pkgen()
 				targetKeys = append(targetKeys, key)
