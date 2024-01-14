@@ -13,6 +13,7 @@ jobs:
           diagnostic-endpoint:
       - name: No diff
         run: |
+          nix develop -c go mod tidy
           nix develop -c go generate ./...
           git diff --exit-code
       - name: Test
