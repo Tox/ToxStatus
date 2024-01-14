@@ -5,7 +5,7 @@ go 1.21
 toolchain go1.21.5
 
 require (
-	github.com/alexbakker/tox4go v0.0.0-20240112114532-507773af8be1
+	github.com/alexbakker/tox4go v0.0.0-20240114135044-2f2f27531447
 	github.com/lmittmann/tint v1.0.3
 	github.com/mattn/go-isatty v0.0.20
 	github.com/mattn/go-sqlite3 v1.14.19

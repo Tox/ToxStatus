@@ -1,8 +1,8 @@
 github.com/BurntSushi/toml v0.3.1/go.mod h1:xHWCNGjB5oqiDr8zfno3MHue2Ht5sIBksp03qcyfWMU=
 github.com/alexbakker/tint v0.0.0-20240104110959-ed2aff4c49ad h1:LBMnYWlEI5NKxOAsfmSiZdZKppav5x9GmEWpAVKPhHU=
 github.com/alexbakker/tint v0.0.0-20240104110959-ed2aff4c49ad/go.mod h1:HIS3gSy7qNwGCj+5oRjAutErFBl4BzdQP6cJZ0NfMwE=
-github.com/alexbakker/tox4go v0.0.0-20240112114532-507773af8be1 h1:xDEBd89tvTfyg/x01CHb8jqBek+kLE4+//H3CmGfgUE=
-github.com/alexbakker/tox4go v0.0.0-20240112114532-507773af8be1/go.mod h1:Y7Zez7YP9BLkmgaA9M4gc7NspOdGsUn97s4cMay2zYI=
+github.com/alexbakker/tox4go v0.0.0-20240114135044-2f2f27531447 h1:rhu4OIH9Y6dlXkTNu28oVQ1O2rNix2APz8FEY9jXp/0=
+github.com/alexbakker/tox4go v0.0.0-20240114135044-2f2f27531447/go.mod h1:Y7Zez7YP9BLkmgaA9M4gc7NspOdGsUn97s4cMay2zYI=
 github.com/antlr4-go/antlr/v4 v4.13.0 h1:lxCg3LAv+EUK6t1i0y1V6/SLeUi0eKEKdhQAlS8TVTI=
 github.com/antlr4-go/antlr/v4 v4.13.0/go.mod h1:pfChB/xh/Unjila75QW7+VU4TSnWnnk9UTnmpPaOR2g=
 github.com/benbjohnson/clock v1.1.0/go.mod h1:J11/hYXuz8f4ySSvYwY0FKfm+ezbsZBKZxNJlLklBHA=

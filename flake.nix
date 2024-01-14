@@ -6,7 +6,7 @@
   outputs = { self, nixpkgs, flake-utils }:
     flake-utils.lib.eachDefaultSystem (system: let
       pkgs = nixpkgs.legacyPackages.${system};
-      toxStatusVersion = "2.0.0-alpha1";
+      toxStatusVersion = "2.0.0-dev1";
     in {
       packages = flake-utils.lib.flattenTree rec {
         default = toxstatus;
@@ -16,7 +16,7 @@
           src = ./.;
 
           subPackages = [ "cmd/toxstatus" ];
-          vendorHash = "sha256-cE8L7vuf3msMplL6BfQ4gt1rELMIFswDu9mfSXJ9VAs=";
+          vendorHash = "sha256-GOYCvZ+ndlh6xAJ4sBp+PcirTj6PxW8Az+Mhx/MM/vA=";
 
           tags = ["sqlite_foreign_keys"];
 

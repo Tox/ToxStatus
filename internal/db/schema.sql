@@ -22,5 +22,6 @@ CREATE TABLE IF NOT EXISTS node_address (
   ip            TEXT NOT NULL,
   port          INTEGER NOT NULL CHECK (port > 0 AND port < 65536),
   ptr           TEXT,
+  UNIQUE(node_id, net, ip, port),
   FOREIGN KEY (node_id) REFERENCES node (id) 
 ) STRICT;

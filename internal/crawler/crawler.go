@@ -15,7 +15,6 @@ import (
 	"github.com/alexbakker/tox4go/dht"
 	"github.com/alexbakker/tox4go/dht/ping"
 	"github.com/alexbakker/tox4go/transport"
-	"golang.org/x/exp/maps"
 )
 
 type Crawler struct {
@@ -26,7 +25,6 @@ type Crawler struct {
 	m     sync.Mutex
 	ident *dht.Identity
 	pings *ping.Set
-	nodes map[dht.PublicKey]*Node
 
 	started    atomic.Bool
 	sendChan   chan *dhtPacket
@@ -70,7 +68,6 @@ func New(nodesRepo *repo.NodesRepo, opts CrawlerOptions) (*Crawler, error) {
 		logger:     opts.Logger,
 		ident:      ident,
 		pings:      ping.NewSet(ping.DefaultTimeout),
-		nodes:      make(map[dht.PublicKey]*Node),
 		sendChan:   make(chan *dhtPacket),
 		handleChan: make(chan *dhtPacket),
 		recvChan:   make(chan *rawPacket),
@@ -217,24 +214,26 @@ func (c *Crawler) Run(ctx context.Context, bsNodes []*dht.Node) error {
 				return
 			}
 
-			c.m.Lock()
-			node := &Node{Node: bsNode}
-			c.nodes[*bsNode.PublicKey] = node
-			c.m.Unlock()
+			logger := slog.With(
+				slog.String("public_key", bsNode.PublicKey.String()),
+				slog.String("addr", bsNode.Addr().String()),
+			)
 
-			if err := c.getNodes(ctx, node, c.ident.PublicKey); err != nil {
-				c.logger.Error("Unable to query bootstrap node",
-					slog.String("public_key", bsNode.PublicKey.String()),
-					slog.String("addr", bsNode.Addr().String()),
-					slog.Any("err", err))
+			if _, err := c.repo.TrackDHTNode(ctx, bsNode); err != nil {
+				logger.Error("Unable to track bootstrap node", slog.Any("err", err))
+				continue
+			}
+
+			if err := c.getNodes(ctx, bsNode, c.ident.PublicKey); err != nil {
+				logger.Error("Unable to query bootstrap node", slog.Any("err", err))
 			}
 		}
 
-		// Wait 5 seconds for boostrapping to have gathered some node responses
+		// Wait for boostrapping to have gathered some node responses
 		select {
 		case <-ctx.Done():
 			return
-		case <-time.After(5 * time.Second):
+		case <-time.After(2 * time.Second):
 		}
 
 		// TODO: Remove nodes that we haven't successfully pinged in a while
@@ -249,31 +248,26 @@ func (c *Crawler) Run(ctx context.Context, bsNodes []*dht.Node) error {
 				c.logger.Info(key.String())
 			}
 
-			c.m.Lock()
-			c.logger.Info("Crawling...", slog.Int("nodes", len(c.nodes)))
-			nodes := maps.Values(c.nodes)
-			c.m.Unlock()
+			nodes, err := c.repo.GetResponsiveDHTNodes(ctx)
+			if err == nil {
+				c.logger.Info("Crawling...", slog.Int("nodes", len(nodes)))
 
-			var queriedNodes int
-			for _, node := range nodes {
-				if node.lastPong.IsZero() {
-					continue
-				}
-				for _, targetKey := range targetKeys {
-					if err := ctx.Err(); err != nil {
-						return
-					}
-					if err := c.getNodes(ctx, node, targetKey); err != nil {
-						c.logger.Error("Unable to query node",
-							slog.String("public_key", node.PublicKey.String()),
-							slog.String("addr", node.Addr().String()),
-							slog.Any("err", err))
+				for _, node := range nodes {
+					for _, targetKey := range targetKeys {
+						if err := ctx.Err(); err != nil {
+							return
+						}
+						if err := c.getNodes(ctx, node, targetKey); err != nil {
+							c.logger.Error("Unable to query node",
+								slog.String("public_key", node.PublicKey.String()),
+								slog.String("addr", node.Addr().String()),
+								slog.Any("err", err))
+						}
 					}
 				}
-				queriedNodes++
+			} else {
+				c.logger.Error("Unable to obtain responsive dht nodes", slog.Any("err", err))
 			}
-
-			c.logger.Info("Online nodes", slog.Int("queried", queriedNodes))
 
 			select {
 			case <-ctx.Done():
@@ -288,40 +282,54 @@ func (c *Crawler) Run(ctx context.Context, bsNodes []*dht.Node) error {
 		defer wg.Done()
 
 		for {
-			c.m.Lock()
-			nodes := maps.Values(c.nodes)
-			c.m.Unlock()
-
-			var pingedNodes int
-			for _, node := range nodes {
-				if err := ctx.Err(); err != nil {
-					return
-				}
-
-				// If we've never received a pong, retry pinging every now and then
-				if !node.lastPong.IsZero() || time.Since(node.lastPingAttempt) < 1*time.Minute {
-					continue
-				}
-
-				if err := c.getNodes(ctx, node, c.ident.PublicKey); err != nil {
-					c.logger.Error("Unable to ping node",
-						slog.String("public_key", node.PublicKey.String()),
-						slog.String("addr", node.Addr().String()),
-						slog.Any("err", err))
-				}
-
-				pingedNodes++
-			}
-
-			if pingedNodes > 0 {
-				c.logger.Info("Pinged nodes", slog.Int("count", pingedNodes))
-
+			count, err := c.repo.GetNodeCount(ctx)
+			if err == nil {
+				c.logger.Info("Total number of nodes", slog.Int64("count", count))
+			} else {
+				c.logger.Error("Unable to query db for total number of nodes", slog.Any("err", err))
 			}
 
 			select {
 			case <-ctx.Done():
 				return
-			case <-time.After(10 * time.Second):
+			case <-time.After(1 * time.Second):
+			}
+		}
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+
+		for {
+			const retryPingDelay = 10 * time.Second
+			nodes, err := c.repo.GetUnresponsiveDHTNodes(ctx, retryPingDelay)
+			if err == nil {
+				var pingedNodes int
+				for _, node := range nodes {
+					if err := ctx.Err(); err != nil {
+						return
+					}
+
+					if err := c.getNodes(ctx, node, c.ident.PublicKey); err != nil {
+						c.logger.Error("Unable to ping node",
+							slog.String("public_key", node.PublicKey.String()),
+							slog.String("addr", node.Addr().String()),
+							slog.Any("err", err))
+					} else {
+						pingedNodes++
+					}
+				}
+
+				c.logger.Info("Pinged nodes", slog.Int("count", pingedNodes))
+			} else {
+				c.logger.Error("Unable to obtain unresponsive dht nodes", slog.Any("err", err))
+			}
+
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(1 * time.Second):
 			}
 		}
 	}()
@@ -360,50 +368,38 @@ func (c *Crawler) handleSendNodesPacket(ctx context.Context, tp transport.Transp
 		c.m.Unlock()
 		return fmt.Errorf("unexpected sendnodes packet: %w", err)
 	}
-
-	// Insert/update the known nodes list
-	if foundNode := c.nodes[*node.PublicKey]; foundNode != nil {
-		foundNode.Pong()
-	} else {
-		c.logger.Info("Tracking new node",
-			slog.Int("total", len(c.nodes)),
-			slog.String("public_key", node.PublicKey.String()),
-			slog.String("net", node.Type.Net()),
-			slog.String("addr", node.Addr().String()))
-
-		newNode := Node{Node: node}
-		newNode.Pong()
-		c.nodes[*node.PublicKey] = &newNode
-
-		if _, err := c.repo.TrackDHTNode(ctx, node); err != nil {
-			c.logger.Error("Unable to track node", slog.Any("err", err))
-		}
-	}
-
-	var queryNodes []*Node
-	for _, packetNode := range packet.Nodes {
-		// Don't query our own node or ones we've seen before
-		if _, ok := c.nodes[*packetNode.PublicKey]; !ok && !bytes.Equal(packetNode.PublicKey[:], c.ident.PublicKey[:]) {
-			queryNode := &Node{Node: packetNode}
-			queryNodes = append(queryNodes, queryNode)
-			c.nodes[*queryNode.PublicKey] = queryNode
-
-			c.logger.Info("Tracking new node",
-				slog.Int("total", len(c.nodes)),
-				slog.String("public_key", queryNode.PublicKey.String()),
-				slog.String("net", queryNode.Type.Net()),
-				slog.String("addr", queryNode.Addr().String()))
-
-			if _, err := c.repo.TrackDHTNode(ctx, node); err != nil {
-				c.logger.Error("Unable to track node", slog.Any("err", err))
-			}
-		}
-	}
 	c.m.Unlock()
 
+	// Insert/update the known nodes list
+	if err := c.repo.PongDHTNode(ctx, node); err != nil {
+		return fmt.Errorf("update node pong time: %w", err)
+	}
+
 	var errs []error
-	for _, queryNode := range queryNodes {
-		if err := c.getNodes(ctx, queryNode, c.ident.PublicKey); err != nil {
+	for _, packetNode := range packet.Nodes {
+		// Don't query our own node or ones we've seen before
+		if bytes.Equal(packetNode.PublicKey[:], c.ident.PublicKey[:]) {
+			continue
+		}
+		found, err := c.repo.HasNodeByPublicKey(ctx, packetNode.PublicKey)
+		if err != nil {
+			return fmt.Errorf("check whether node is known: %w", err)
+		}
+		if found {
+			continue
+		}
+
+		logger := c.logger.With(slog.String("public_key", packetNode.PublicKey.String()),
+			slog.String("net", packetNode.Type.Net()),
+			slog.String("addr", packetNode.Addr().String()))
+		logger.Info("Tracking new node")
+
+		if _, err := c.repo.TrackDHTNode(ctx, packetNode); err != nil {
+			logger.Error("Unable to track node", slog.Any("err", err))
+			continue
+		}
+
+		if err := c.getNodes(ctx, packetNode, c.ident.PublicKey); err != nil {
 			errs = append(errs, err)
 		}
 	}
@@ -416,7 +412,7 @@ func (c *Crawler) handleSendNodesPacket(ctx context.Context, tp transport.Transp
 }
 
 // getNodes queries the given DHT node to search for the given publicKey.
-func (c *Crawler) getNodes(ctx context.Context, node *Node, publicKey *dht.PublicKey) error {
+func (c *Crawler) getNodes(ctx context.Context, node *dht.Node, publicKey *dht.PublicKey) error {
 	c.logger.Debug("Querying node",
 		slog.String("public_key", node.PublicKey.String()),
 		slog.String("net", node.Type.Net()),
@@ -428,8 +424,11 @@ func (c *Crawler) getNodes(ctx context.Context, node *Node, publicKey *dht.Publi
 		c.m.Unlock()
 		return err
 	}
-	node.lastPingAttempt = time.Now()
 	c.m.Unlock()
+
+	if err := c.repo.PingDHTNode(ctx, node); err != nil {
+		return fmt.Errorf("track node ping: %s", err)
+	}
 
 	packet := &dht.GetNodesPacket{
 		PublicKey: publicKey,
@@ -439,7 +438,7 @@ func (c *Crawler) getNodes(ctx context.Context, node *Node, publicKey *dht.Publi
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
-	case c.sendChan <- &dhtPacket{Packet: packet, Node: node.Node}:
+	case c.sendChan <- &dhtPacket{Packet: packet, Node: node}:
 	}
 
 	return nil
