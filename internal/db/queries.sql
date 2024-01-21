@@ -16,12 +16,10 @@ SELECT COUNT(*)
 FROM node;
 
 -- name: UpsertNode :one
-INSERT INTO node(public_key, fqdn, motd)
-VALUES(?, ?, ?)
+INSERT INTO node(public_key)
+VALUES(?)
 ON CONFLICT(public_key)
-DO UPDATE SET fqdn = EXCLUDED.fqdn,
-              motd = EXCLUDED.motd,
-              last_seen_at = unixepoch('subsec')
+DO UPDATE SET last_seen_at = unixepoch('subsec')
 RETURNING *;
 
 -- name: UpdateNodeBootstrapInfo :exec

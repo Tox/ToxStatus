@@ -68,7 +68,7 @@ func TestAddNode(t *testing.T) {
 	defer close()
 
 	node := generateNode(t)
-	dbNode, err := repo.q.UpsertNode(ctx, &db.UpsertNodeParams{PublicKey: (*db.PublicKey)(node.PublicKey)})
+	dbNode, err := repo.q.UpsertNode(ctx, (*db.PublicKey)(node.PublicKey))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,7 +93,7 @@ func TestHasNodeByPublicKey(t *testing.T) {
 	defer close()
 
 	node := generateNode(t)
-	_, err := repo.q.UpsertNode(ctx, &db.UpsertNodeParams{PublicKey: (*db.PublicKey)(node.PublicKey)})
+	_, err := repo.q.UpsertNode(ctx, (*db.PublicKey)(node.PublicKey))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,7 +120,7 @@ func TestPongNonExistentNode(t *testing.T) {
 	defer close()
 
 	pk := generatePublicKey(t)
-	_, err := repo.q.UpsertNode(ctx, &db.UpsertNodeParams{PublicKey: (*db.PublicKey)(pk)})
+	_, err := repo.q.UpsertNode(ctx, (*db.PublicKey)(pk))
 	if err != nil {
 		t.Fatal(err)
 	}

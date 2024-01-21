@@ -445,23 +445,15 @@ func (q *Queries) UpdateNodeInfoRequestTime(ctx context.Context, arg *UpdateNode
 }
 
 const upsertNode = `-- name: UpsertNode :one
-INSERT INTO node(public_key, fqdn, motd)
-VALUES(?, ?, ?)
+INSERT INTO node(public_key)
+VALUES(?)
 ON CONFLICT(public_key)
-DO UPDATE SET fqdn = EXCLUDED.fqdn,
-              motd = EXCLUDED.motd,
-              last_seen_at = unixepoch('subsec')
+DO UPDATE SET last_seen_at = unixepoch('subsec')
 RETURNING id, created_at, last_seen_at, last_info_req_at, last_info_res_at, public_key, fqdn, motd, version
 `
 
-type UpsertNodeParams struct {
-	PublicKey *PublicKey
-	Fqdn      sql.NullString
-	Motd      sql.NullString
-}
-
-func (q *Queries) UpsertNode(ctx context.Context, arg *UpsertNodeParams) (*Node, error) {
-	row := q.db.QueryRowContext(ctx, upsertNode, arg.PublicKey, arg.Fqdn, arg.Motd)
+func (q *Queries) UpsertNode(ctx context.Context, publicKey *PublicKey) (*Node, error) {
+	row := q.db.QueryRowContext(ctx, upsertNode, publicKey)
 	var i Node
 	err := row.Scan(
 		&i.ID,

@@ -73,9 +73,7 @@ func (r *NodesRepo) TrackDHTNode(ctx context.Context, node *dht.Node) (*models.N
 	defer tx.Rollback()
 
 	q := r.q.WithTx(tx)
-	dbNode, err := q.UpsertNode(ctx, &db.UpsertNodeParams{
-		PublicKey: (*db.PublicKey)(node.PublicKey),
-	})
+	dbNode, err := q.UpsertNode(ctx, (*db.PublicKey)(node.PublicKey))
 	if err != nil {
 		return nil, fmt.Errorf("upsert node: %w", err)
 	}
