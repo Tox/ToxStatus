@@ -2,6 +2,7 @@ package crawler
 
 import (
 	"encoding/binary"
+	"net"
 
 	"github.com/alexbakker/tox4go/dht"
 )
@@ -21,4 +22,13 @@ func getPublicKeyGenerator(n int) func() *dht.PublicKey {
 		copy(res[:len(counterBytes)], counterBytes[:])
 		return &res
 	}
+}
+
+func isGlobalUnicast(ip net.IP) bool {
+	return !ip.IsUnspecified() &&
+		!ip.IsLoopback() &&
+		!ip.IsPrivate() &&
+		!ip.IsMulticast() &&
+		!ip.IsLinkLocalUnicast() &&
+		!ip.IsLinkLocalMulticast()
 }

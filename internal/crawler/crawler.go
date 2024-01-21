@@ -243,6 +243,11 @@ func (c *Crawler) Run(ctx context.Context, bsNodes []*dht.Node) error {
 				slog.String("addr", bsNode.Addr().String()),
 			)
 
+			if !isGlobalUnicast(bsNode.IP) {
+				logger.Warn("Node ip is not a global unicast address")
+				continue
+			}
+
 			if _, err := c.repo.TrackDHTNode(ctx, bsNode); err != nil {
 				logger.Error("Unable to track bootstrap node", slog.Any("err", err))
 				continue
@@ -462,6 +467,16 @@ func (c *Crawler) handleSendNodesPacket(ctx context.Context, node *dht.Node, pac
 		if bytes.Equal(packetNode.PublicKey[:], c.ident.PublicKey[:]) {
 			continue
 		}
+
+		logger := c.logger.With(slog.String("public_key", packetNode.PublicKey.String()),
+			slog.String("net", packetNode.Type.Net()),
+			slog.String("addr", packetNode.Addr().String()))
+
+		if !isGlobalUnicast(packetNode.IP) {
+			logger.Warn("Node ip is not a global unicast address")
+			continue
+		}
+
 		found, err := c.repo.HasNodeByPublicKey(ctx, packetNode.PublicKey)
 		if err != nil {
 			return fmt.Errorf("check whether node is known: %w", err)
@@ -470,9 +485,6 @@ func (c *Crawler) handleSendNodesPacket(ctx context.Context, node *dht.Node, pac
 			continue
 		}
 
-		logger := c.logger.With(slog.String("public_key", packetNode.PublicKey.String()),
-			slog.String("net", packetNode.Type.Net()),
-			slog.String("addr", packetNode.Addr().String()))
 		logger.Info("Tracking new node")
 
 		if _, err := c.repo.TrackDHTNode(ctx, packetNode); err != nil {
