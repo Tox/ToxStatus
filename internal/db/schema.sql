@@ -3,9 +3,11 @@ CREATE TABLE IF NOT EXISTS node (
   created_at    REAL NOT NULL DEFAULT(unixepoch('subsec')),
   -- The last time this node's public key was seen in the DHT
   last_seen_at  REAL NOT NULL DEFAULT(unixepoch('subsec')),
+  last_info_at  REAL DEFAULT(unixepoch('subsec')),
   public_key    TEXT NOT NULL UNIQUE CHECK (LENGTH(public_key) == 64),
   fqdn          TEXT,
-  motd          TEXT
+  motd          TEXT,
+  version       INTEGER
 ) STRICT;
 
 CREATE TABLE IF NOT EXISTS node_address (

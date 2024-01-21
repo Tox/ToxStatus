@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Tox/ToxStatus/internal/repo"
+	"github.com/alexbakker/tox4go/bootstrap"
 	"github.com/alexbakker/tox4go/dht"
 	"github.com/alexbakker/tox4go/dht/ping"
 	"github.com/alexbakker/tox4go/transport"
@@ -26,10 +27,11 @@ type Crawler struct {
 	ident *dht.Identity
 	pings *ping.Set
 
-	started    atomic.Bool
-	sendChan   chan *dhtPacket
-	handleChan chan *dhtPacket
-	recvChan   chan *rawPacket
+	started        atomic.Bool
+	sendChan       chan *dhtPacket
+	handleChan     chan *dhtPacket
+	handleInfoChan chan *infoPacket
+	recvChan       chan *rawPacket
 }
 
 type CrawlerOptions struct {
@@ -37,6 +39,11 @@ type CrawlerOptions struct {
 	HTTPAddr   string
 	ToxUDPAddr string
 	Workers    int
+}
+
+type infoPacket struct {
+	Packet bootstrap.Packet
+	Addr   *net.UDPAddr
 }
 
 type dhtPacket struct {
@@ -63,14 +70,15 @@ func New(nodesRepo *repo.NodesRepo, opts CrawlerOptions) (*Crawler, error) {
 	}
 
 	c := &Crawler{
-		repo:       nodesRepo,
-		opts:       opts,
-		logger:     opts.Logger,
-		ident:      ident,
-		pings:      ping.NewSet(ping.DefaultTimeout),
-		sendChan:   make(chan *dhtPacket),
-		handleChan: make(chan *dhtPacket),
-		recvChan:   make(chan *rawPacket),
+		repo:           nodesRepo,
+		opts:           opts,
+		logger:         opts.Logger,
+		ident:          ident,
+		pings:          ping.NewSet(ping.DefaultTimeout),
+		sendChan:       make(chan *dhtPacket),
+		handleChan:     make(chan *dhtPacket),
+		handleInfoChan: make(chan *infoPacket),
+		recvChan:       make(chan *rawPacket),
 	}
 
 	return c, nil
@@ -197,6 +205,13 @@ func (c *Crawler) Run(ctx context.Context, bsNodes []*dht.Node) error {
 						slog.String("public_key", packet.Node.PublicKey.String()),
 						slog.String("net", packet.Node.Type.Net()),
 						slog.String("addr", packet.Node.Addr().String()),
+						slog.Any("err", err))
+				}
+			case packet := <-c.handleInfoChan:
+				if err := c.handleInfoPacket(ctx, tp, packet.Packet, packet.Addr); err != nil {
+					c.logger.Error("Unable to handle packet",
+						slog.String("net", packet.Addr.Network()),
+						slog.String("addr", packet.Addr.String()),
 						slog.Any("err", err))
 				}
 			}
@@ -356,8 +371,25 @@ func (c *Crawler) handleDHTPacket(ctx context.Context, tp transport.Transport, p
 	case *dht.PingRequestPacket:
 	case *dht.PingResponsePacket:
 	default:
-		err = fmt.Errorf("unsupported packet type: %d", packet.ID())
+		err = fmt.Errorf("unsupported dht packet type: %d", packet.ID())
 	}
+
+	return err
+}
+
+func (c *Crawler) handleInfoPacket(ctx context.Context, tp transport.Transport, packet bootstrap.Packet, addr *net.UDPAddr) error {
+	var err error
+	switch packet := packet.(type) {
+	case *bootstrap.InfoResponsePacket:
+		err = c.handleBootstrapInfoPacket(ctx, tp, addr, packet)
+	default:
+		err = fmt.Errorf("unsupported bootstrap info packet type: %d", packet.ID())
+	}
+
+	// TODO: Check whether we actually asked for bootstrap info from this node address
+	// TODO: Temporarily store
+
+	c.repo.
 
 	return err
 }
@@ -408,6 +440,10 @@ func (c *Crawler) handleSendNodesPacket(ctx context.Context, tp transport.Transp
 		return fmt.Errorf("query sent nodes: %w", errors.Join(errs...))
 	}
 
+	return nil
+}
+
+func (c *Crawler) handleBootstrapInfoPacket(ctx context.Context, tp transport.Transport, addr *net.UDPAddr, packet *bootstrap.InfoResponsePacket) error {
 	return nil
 }
 
@@ -474,6 +510,14 @@ func (c *Crawler) receivePacket(ctx context.Context, data []byte, addr *net.UDPA
 
 	logger := c.logger.With(slog.String("net", nodeType.Net()), slog.String("addr", addr.String()))
 
+	bsPacket, err := bootstrap.UnmarshalBinary(data)
+	if err == nil {
+		c.handleInfoChan <- &infoPacket{Addr: addr, Packet: bsPacket}
+	}
+	if err != nil && !errors.Is(err, bootstrap.ErrUnknownPacketType) {
+		return fmt.Errorf("bootstrap info packet check: %w", err)
+	}
+
 	var encryptedPacket dht.EncryptedPacket
 	if err := encryptedPacket.UnmarshalBinary(data); err != nil {
 		return fmt.Errorf("unmarshal encrypted packet: %w", err)
@@ -485,7 +529,7 @@ func (c *Crawler) receivePacket(ctx context.Context, data []byte, addr *net.UDPA
 		logger.Debug("Ignoring non-sendnodes packet")
 		return nil
 	}
-	logger.Debug("Handling packet")
+	logger.Debug("Decrypting DHT packet")
 
 	decryptedPacket, err := c.ident.DecryptPacket(&encryptedPacket)
 	if err != nil {

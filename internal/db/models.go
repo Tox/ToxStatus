@@ -12,9 +12,11 @@ type Node struct {
 	ID         int64
 	CreatedAt  Time
 	LastSeenAt Time
+	LastInfoAt Time
 	PublicKey  *PublicKey
 	Fqdn       sql.NullString
 	Motd       sql.NullString
+	Version    sql.NullInt64
 }
 
 type NodeAddress struct {

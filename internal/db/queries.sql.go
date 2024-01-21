@@ -36,8 +36,41 @@ func (q *Queries) GetNodeAddress(ctx context.Context, arg *GetNodeAddressParams)
 	return id, err
 }
 
+const getNodeByAddress = `-- name: GetNodeByAddress :one
+SELECT n.id, n.created_at, n.last_seen_at, n.last_info_at, n.public_key, n.fqdn, n.motd, n.version
+FROM node n
+JOIN node_address a ON a.node_id = n.id
+WHERE a.net = ? AND a.ip = ? AND a.port = ?
+`
+
+type GetNodeByAddressParams struct {
+	Net  string
+	Ip   string
+	Port int64
+}
+
+type GetNodeByAddressRow struct {
+	Node Node
+}
+
+func (q *Queries) GetNodeByAddress(ctx context.Context, arg *GetNodeByAddressParams) (*GetNodeByAddressRow, error) {
+	row := q.db.QueryRowContext(ctx, getNodeByAddress, arg.Net, arg.Ip, arg.Port)
+	var i GetNodeByAddressRow
+	err := row.Scan(
+		&i.Node.ID,
+		&i.Node.CreatedAt,
+		&i.Node.LastSeenAt,
+		&i.Node.LastInfoAt,
+		&i.Node.PublicKey,
+		&i.Node.Fqdn,
+		&i.Node.Motd,
+		&i.Node.Version,
+	)
+	return &i, err
+}
+
 const getNodeByPublicKey = `-- name: GetNodeByPublicKey :many
-SELECT n.id, n.created_at, n.last_seen_at, n.public_key, n.fqdn, n.motd, a.id, a.created_at, a.last_seen_at, a.last_ping_at, a.last_pong_at, a.node_id, a.net, a.ip, a.port, a.ptr
+SELECT n.id, n.created_at, n.last_seen_at, n.last_info_at, n.public_key, n.fqdn, n.motd, n.version, a.id, a.created_at, a.last_seen_at, a.last_ping_at, a.last_pong_at, a.node_id, a.net, a.ip, a.port, a.ptr
 FROM node n
 JOIN node_address a ON a.node_id = n.id
 WHERE n.public_key = ?
@@ -61,9 +94,11 @@ func (q *Queries) GetNodeByPublicKey(ctx context.Context, publicKey *PublicKey) 
 			&i.Node.ID,
 			&i.Node.CreatedAt,
 			&i.Node.LastSeenAt,
+			&i.Node.LastInfoAt,
 			&i.Node.PublicKey,
 			&i.Node.Fqdn,
 			&i.Node.Motd,
+			&i.Node.Version,
 			&i.NodeAddress.ID,
 			&i.NodeAddress.CreatedAt,
 			&i.NodeAddress.LastSeenAt,
@@ -101,7 +136,7 @@ func (q *Queries) GetNodeCount(ctx context.Context) (int64, error) {
 }
 
 const getResponsiveNodes = `-- name: GetResponsiveNodes :many
-SELECT n.id, n.created_at, n.last_seen_at, n.public_key, n.fqdn, n.motd, a.id, a.created_at, a.last_seen_at, a.last_ping_at, a.last_pong_at, a.node_id, a.net, a.ip, a.port, a.ptr
+SELECT n.id, n.created_at, n.last_seen_at, n.last_info_at, n.public_key, n.fqdn, n.motd, n.version, a.id, a.created_at, a.last_seen_at, a.last_ping_at, a.last_pong_at, a.node_id, a.net, a.ip, a.port, a.ptr
 FROM node n
 JOIN node_address a ON a.node_id = n.id
 WHERE a.last_pong_at IS NOT NULL
@@ -125,9 +160,11 @@ func (q *Queries) GetResponsiveNodes(ctx context.Context) ([]*GetResponsiveNodes
 			&i.Node.ID,
 			&i.Node.CreatedAt,
 			&i.Node.LastSeenAt,
+			&i.Node.LastInfoAt,
 			&i.Node.PublicKey,
 			&i.Node.Fqdn,
 			&i.Node.Motd,
+			&i.Node.Version,
 			&i.NodeAddress.ID,
 			&i.NodeAddress.CreatedAt,
 			&i.NodeAddress.LastSeenAt,
@@ -153,7 +190,7 @@ func (q *Queries) GetResponsiveNodes(ctx context.Context) ([]*GetResponsiveNodes
 }
 
 const getUnresponsiveNodes = `-- name: GetUnresponsiveNodes :many
-SELECT n.id, n.created_at, n.last_seen_at, n.public_key, n.fqdn, n.motd, a.id, a.created_at, a.last_seen_at, a.last_ping_at, a.last_pong_at, a.node_id, a.net, a.ip, a.port, a.ptr
+SELECT n.id, n.created_at, n.last_seen_at, n.last_info_at, n.public_key, n.fqdn, n.motd, n.version, a.id, a.created_at, a.last_seen_at, a.last_ping_at, a.last_pong_at, a.node_id, a.net, a.ip, a.port, a.ptr
 FROM node n
 JOIN node_address a ON a.node_id = n.id
 WHERE a.last_pong_at IS NULL
@@ -179,9 +216,11 @@ func (q *Queries) GetUnresponsiveNodes(ctx context.Context, retryDelay float64) 
 			&i.Node.ID,
 			&i.Node.CreatedAt,
 			&i.Node.LastSeenAt,
+			&i.Node.LastInfoAt,
 			&i.Node.PublicKey,
 			&i.Node.Fqdn,
 			&i.Node.Motd,
+			&i.Node.Version,
 			&i.NodeAddress.ID,
 			&i.NodeAddress.CreatedAt,
 			&i.NodeAddress.LastSeenAt,
@@ -284,11 +323,28 @@ func (q *Queries) UpdateNodeAddress(ctx context.Context, arg *UpdateNodeAddressP
 	return &i, err
 }
 
+const updateNodeInfo = `-- name: UpdateNodeInfo :exec
+UPDATE node
+SET motd = ?, version = ?, last_seen_at = unixepoch('subsec')
+WHERE public_key = ?
+`
+
+type UpdateNodeInfoParams struct {
+	Motd      sql.NullString
+	Version   sql.NullInt64
+	PublicKey *PublicKey
+}
+
+func (q *Queries) UpdateNodeInfo(ctx context.Context, arg *UpdateNodeInfoParams) error {
+	_, err := q.db.ExecContext(ctx, updateNodeInfo, arg.Motd, arg.Version, arg.PublicKey)
+	return err
+}
+
 const upsertNode = `-- name: UpsertNode :one
 INSERT INTO node(public_key, fqdn, motd)
 VALUES(?, ?, ?)
 ON CONFLICT(public_key) DO UPDATE SET fqdn = EXCLUDED.fqdn, motd = EXCLUDED.motd, last_seen_at = unixepoch('subsec')
-RETURNING id, created_at, last_seen_at, public_key, fqdn, motd
+RETURNING id, created_at, last_seen_at, last_info_at, public_key, fqdn, motd, version
 `
 
 type UpsertNodeParams struct {
@@ -304,9 +360,11 @@ func (q *Queries) UpsertNode(ctx context.Context, arg *UpsertNodeParams) (*Node,
 		&i.ID,
 		&i.CreatedAt,
 		&i.LastSeenAt,
+		&i.LastInfoAt,
 		&i.PublicKey,
 		&i.Fqdn,
 		&i.Motd,
+		&i.Version,
 	)
 	return &i, err
 }

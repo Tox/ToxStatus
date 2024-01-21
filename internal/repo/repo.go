@@ -191,6 +191,10 @@ func (r *NodesRepo) GetUnresponsiveDHTNodes(ctx context.Context, retryDelay time
 	return convertNodeAddressesToDHTNodes(combos)
 }
 
+func (r *NodesRepo) UpdateNodeByAddress(ctx context.Context) error {
+	return nil
+}
+
 func convertNodeAddressesToDHTNodes(rows []*nodeAddressCombo) ([]*dht.Node, error) {
 	// Only return a single address per node for now
 	nodes := make(map[dht.PublicKey]*dht.Node)
