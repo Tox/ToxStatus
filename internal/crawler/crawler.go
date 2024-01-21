@@ -91,9 +91,7 @@ func (c *Crawler) Run(ctx context.Context, bsNodes []*dht.Node) error {
 		return errors.New("attempt to start crawler twice")
 	}
 
-	var err error
-	var tp transport.Transport
-	tp, err = transport.NewUDPTransport("udp", c.opts.ToxUDPAddr, func(data []byte, addr *net.UDPAddr) {
+	tp, err := transport.NewUDPTransport("udp", c.opts.ToxUDPAddr, func(data []byte, addr *net.UDPAddr) {
 		// We need to copy the packet data, because once this function returns,
 		// the backing buffer will be reused for the next packet, so the
 		// contents of the data slice will get overwritten.
@@ -212,7 +210,7 @@ func (c *Crawler) Run(ctx context.Context, bsNodes []*dht.Node) error {
 			case <-ctx.Done():
 				return
 			case packet := <-c.handleChan:
-				if err := c.handleDHTPacket(ctx, tp, packet.Packet, packet.Node); err != nil {
+				if err := c.handleDHTPacket(ctx, packet.Packet, packet.Node); err != nil {
 					c.logger.Error("Unable to handle packet",
 						slog.String("public_key", packet.Node.PublicKey.String()),
 						slog.String("net", packet.Node.Type.Net()),
@@ -220,7 +218,7 @@ func (c *Crawler) Run(ctx context.Context, bsNodes []*dht.Node) error {
 						slog.Any("err", err))
 				}
 			case packet := <-c.handleInfoChan:
-				if err := c.handleInfoPacket(ctx, tp, packet.Packet, packet.Addr); err != nil {
+				if err := c.handleInfoPacket(ctx, packet.Packet, packet.Addr); err != nil {
 					c.logger.Error("Unable to handle bootstrap info packet",
 						slog.String("addr", packet.Addr.String()),
 						slog.Any("err", err))
@@ -418,12 +416,12 @@ func (c *Crawler) Run(ctx context.Context, bsNodes []*dht.Node) error {
 	return err
 }
 
-func (c *Crawler) handleDHTPacket(ctx context.Context, tp transport.Transport, packet dht.Packet, node *dht.Node) error {
+func (c *Crawler) handleDHTPacket(ctx context.Context, packet dht.Packet, node *dht.Node) error {
 	var err error
 	switch packet := packet.(type) {
 	case *dht.GetNodesPacket:
 	case *dht.SendNodesPacket:
-		err = c.handleSendNodesPacket(ctx, tp, node, packet)
+		err = c.handleSendNodesPacket(ctx, node, packet)
 	case *dht.PingRequestPacket:
 	case *dht.PingResponsePacket:
 	default:
@@ -433,11 +431,11 @@ func (c *Crawler) handleDHTPacket(ctx context.Context, tp transport.Transport, p
 	return err
 }
 
-func (c *Crawler) handleInfoPacket(ctx context.Context, tp transport.Transport, packet bootstrap.Packet, addr *net.UDPAddr) error {
+func (c *Crawler) handleInfoPacket(ctx context.Context, packet bootstrap.Packet, addr *net.UDPAddr) error {
 	var err error
 	switch packet := packet.(type) {
 	case *bootstrap.InfoResponsePacket:
-		err = c.handleBootstrapInfoPacket(ctx, tp, addr, packet)
+		err = c.handleBootstrapInfoPacket(ctx, addr, packet)
 	default:
 		err = fmt.Errorf("unsupported bootstrap info packet type: %d", packet.ID())
 	}
@@ -445,7 +443,7 @@ func (c *Crawler) handleInfoPacket(ctx context.Context, tp transport.Transport, 
 	return err
 }
 
-func (c *Crawler) handleSendNodesPacket(ctx context.Context, tp transport.Transport, node *dht.Node, packet *dht.SendNodesPacket) error {
+func (c *Crawler) handleSendNodesPacket(ctx context.Context, node *dht.Node, packet *dht.SendNodesPacket) error {
 	c.m.Lock()
 	if _, err := c.pings.Pop(node.PublicKey, packet.PingID); err != nil {
 		c.m.Unlock()
@@ -494,7 +492,7 @@ func (c *Crawler) handleSendNodesPacket(ctx context.Context, tp transport.Transp
 	return nil
 }
 
-func (c *Crawler) handleBootstrapInfoPacket(ctx context.Context, tp transport.Transport, addr *net.UDPAddr, packet *bootstrap.InfoResponsePacket) error {
+func (c *Crawler) handleBootstrapInfoPacket(ctx context.Context, addr *net.UDPAddr, packet *bootstrap.InfoResponsePacket) error {
 	c.logger.Debug("Handling bootstrap info response packet", slog.String("addr", addr.String()))
 	return c.repo.UpdateNodeInfo(ctx, addr, packet.MOTD, packet.Version)
 }
