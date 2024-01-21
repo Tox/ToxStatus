@@ -45,17 +45,8 @@ func (r *NodesRepo) GetNodeByPublicKey(ctx context.Context, pk *dht.PublicKey) (
 
 	node := convertNode(&rows[0].Node)
 	for _, row := range rows {
-		node.Addresses = append(node.Addresses, &models.NodeAddress{
-			ID:         row.NodeAddress.ID,
-			CreatedAt:  time.Time(row.NodeAddress.CreatedAt),
-			LastSeenAt: time.Time(row.NodeAddress.LastSeenAt),
-			LastPingAt: time.Time(row.NodeAddress.LastPingAt),
-			LastPongAt: time.Time(row.NodeAddress.LastPongAt),
-			Net:        row.NodeAddress.Net,
-			IP:         row.NodeAddress.Ip,
-			Port:       int(row.NodeAddress.Port),
-			Ptr:        convertNullString(row.NodeAddress.Ptr),
-		})
+		addr := convertNodeAddress(node, &row.NodeAddress)
+		node.Addresses = append(node.Addresses, addr)
 	}
 
 	return node, nil
@@ -73,21 +64,6 @@ func (r *NodesRepo) HasNodeByPublicKey(ctx context.Context, pk *dht.PublicKey) (
 func (r *NodesRepo) GetNodeCount(ctx context.Context) (int64, error) {
 	return r.q.GetNodeCount(ctx)
 }
-
-/*func (r *NodesRepo) UpsertNode(ctx context.Context, node *models.Node) (*models.Node, error) {
-	dbNode, err := r.q.UpsertNode(ctx, &db.UpsertNodeParams{
-		PublicKey: (*db.PublicKey)(node.PublicKey),
-		Fqdn:      newNullString(node.FQDN),
-		Motd:      newNullString(node.MOTD),
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	resNode := convertNode(dbNode)
-	resNode.Addresses = node.Addresses
-	return resNode, nil
-}*/
 
 func (r *NodesRepo) TrackDHTNode(ctx context.Context, node *dht.Node) (*models.Node, error) {
 	tx, err := r.db.Begin()
@@ -119,7 +95,7 @@ func (r *NodesRepo) TrackDHTNode(ctx context.Context, node *dht.Node) (*models.N
 	}
 
 	res := convertNode(dbNode)
-	nodeAddr := convertNodeAddress(dbNodeAddr)
+	nodeAddr := convertNodeAddress(res, dbNodeAddr)
 	res.Addresses = append(res.Addresses, nodeAddr)
 	return res, nil
 }
@@ -157,6 +133,86 @@ func (r *NodesRepo) PongDHTNode(ctx context.Context, node *dht.Node) error {
 	return r.q.PongNodeAddress(ctx, id)
 }
 
+func (r *NodesRepo) GetNodesWithStaleBootstrapInfo(ctx context.Context) ([]*models.Node, error) {
+	rows, err := r.q.GetNodesWithStaleBootstrapInfo(ctx, &db.GetNodesWithStaleBootstrapInfoParams{
+		NodeTimeout:  (5 * time.Minute).Seconds(),
+		InfoInterval: (1 * time.Minute).Seconds(),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	nodes := make(map[dht.PublicKey]*models.Node)
+	for _, row := range rows {
+		node, ok := nodes[dht.PublicKey(*row.Node.PublicKey)]
+		if !ok {
+			node = convertNode(&row.Node)
+			nodes[*node.PublicKey] = node
+		}
+
+		addr := convertNodeAddress(node, &row.NodeAddress)
+		node.Addresses = append(node.Addresses, addr)
+	}
+
+	return maps.Values(nodes), nil
+}
+
+func (r *NodesRepo) UpdateNodeInfoRequestTime(ctx context.Context, addrReqTimes map[int64]time.Time) error {
+	tx, err := r.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	q := r.q.WithTx(tx)
+	for id, reqTime := range addrReqTimes {
+		if err := q.UpdateNodeInfoRequestTime(ctx, &db.UpdateNodeInfoRequestTimeParams{
+			ID:            id,
+			LastInfoReqAt: db.Time(reqTime),
+		}); err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
+}
+
+func (r *NodesRepo) UpdateNodeInfo(ctx context.Context, addr *net.UDPAddr, motd string, version uint32) error {
+	tx, err := r.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	var nodeType dht.NodeType
+	if addr.IP.To4() != nil {
+		nodeType = dht.NodeTypeUDPIP4
+	} else {
+		nodeType = dht.NodeTypeUDPIP6
+	}
+
+	q := r.q.WithTx(tx)
+	node, err := r.q.GetNodeByInfoResponseAddress(ctx, &db.GetNodeByInfoResponseAddressParams{
+		InfoReqTimeout: (10 * time.Second).Seconds(),
+		Net:            nodeType.Net(),
+		Ip:             addr.IP.String(),
+		Port:           int64(addr.Port),
+	})
+	if err != nil {
+		return err
+	}
+
+	if err := q.UpdateNodeBootstrapInfo(ctx, &db.UpdateNodeBootstrapInfoParams{
+		PublicKey: node.Node.PublicKey,
+		Motd:      newNullString(&motd),
+		Version:   sql.NullInt64{Valid: true, Int64: int64(version)},
+	}); err != nil {
+		return err
+	}
+
+	return tx.Commit()
+}
+
 func (r *NodesRepo) GetResponsiveDHTNodes(ctx context.Context) ([]*dht.Node, error) {
 	rows, err := r.q.GetResponsiveNodes(ctx)
 	if err != nil {
@@ -191,14 +247,11 @@ func (r *NodesRepo) GetUnresponsiveDHTNodes(ctx context.Context, retryDelay time
 	return convertNodeAddressesToDHTNodes(combos)
 }
 
-func (r *NodesRepo) UpdateNodeByAddress(ctx context.Context) error {
-	return nil
-}
-
 func convertNodeAddressesToDHTNodes(rows []*nodeAddressCombo) ([]*dht.Node, error) {
 	// Only return a single address per node for now
 	nodes := make(map[dht.PublicKey]*dht.Node)
 	for _, row := range rows {
+		// TODO: Replace with models.NodeAddress.DHTNode()
 		publicKey := (*dht.PublicKey)(row.Node.PublicKey)
 		if _, ok := nodes[*publicKey]; ok {
 			continue
@@ -227,27 +280,30 @@ func convertNodeAddressesToDHTNodes(rows []*nodeAddressCombo) ([]*dht.Node, erro
 
 func convertNode(dbNode *db.Node) *models.Node {
 	return &models.Node{
-		ID:         dbNode.ID,
-		CreatedAt:  time.Time(dbNode.CreatedAt),
-		LastSeenAt: time.Time(dbNode.LastSeenAt),
-		PublicKey:  (*dht.PublicKey)(dbNode.PublicKey),
-		FQDN:       convertNullString(dbNode.Fqdn),
-		MOTD:       convertNullString(dbNode.Motd),
+		ID:            dbNode.ID,
+		CreatedAt:     time.Time(dbNode.CreatedAt),
+		LastSeenAt:    time.Time(dbNode.LastSeenAt),
+		LastInfoReqAt: time.Time(dbNode.LastInfoReqAt),
+		LastInfoResAt: time.Time(dbNode.LastInfoResAt),
+		PublicKey:     (*dht.PublicKey)(dbNode.PublicKey),
+		FQDN:          convertNullString(dbNode.Fqdn),
+		MOTD:          convertNullString(dbNode.Motd),
+		Version:       uint32(dbNode.Version.Int64),
 	}
 }
 
-func convertNodeAddress(dbNodeAddr *db.NodeAddress) *models.NodeAddress {
+func convertNodeAddress(node *models.Node, dbNodeAddr *db.NodeAddress) *models.NodeAddress {
 	return &models.NodeAddress{
+		Node:       node,
 		ID:         dbNodeAddr.ID,
 		CreatedAt:  time.Time(dbNodeAddr.CreatedAt),
 		LastSeenAt: time.Time(dbNodeAddr.LastSeenAt),
 		LastPingAt: time.Time(dbNodeAddr.LastPingAt),
 		LastPongAt: time.Time(dbNodeAddr.LastPongAt),
-		//NodeID:     dbNodeAddr.NodeID,
-		Net:  dbNodeAddr.Net,
-		IP:   dbNodeAddr.Ip,
-		Port: int(dbNodeAddr.Port),
-		Ptr:  convertNullString(dbNodeAddr.Ptr),
+		Net:        dbNodeAddr.Net,
+		IP:         dbNodeAddr.Ip,
+		Port:       int(dbNodeAddr.Port),
+		Ptr:        convertNullString(dbNodeAddr.Ptr),
 	}
 }
 

@@ -32,6 +32,11 @@ func (t *Time) Scan(src any) error {
 	return nil
 }
 
+// Value implements the driver.Valuer interface.
+func (t Time) Value() (driver.Value, error) {
+	return float64(time.Time(t).UnixNano()) / float64(time.Second), nil
+}
+
 type PublicKey dht.PublicKey
 
 // Scan implements the sql.Scanner interface.

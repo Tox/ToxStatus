@@ -16,7 +16,7 @@
           src = ./.;
 
           subPackages = [ "cmd/toxstatus" ];
-          vendorHash = "sha256-GOYCvZ+ndlh6xAJ4sBp+PcirTj6PxW8Az+Mhx/MM/vA=";
+          vendorHash = "sha256-/ZWufo+yW3492egBjzafFBMmMHFHfncbQd5hWBxl5dQ=";
 
           tags = ["sqlite_foreign_keys"];
 

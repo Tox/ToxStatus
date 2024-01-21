@@ -18,12 +18,15 @@ FROM node;
 -- name: UpsertNode :one
 INSERT INTO node(public_key, fqdn, motd)
 VALUES(?, ?, ?)
-ON CONFLICT(public_key) DO UPDATE SET fqdn = EXCLUDED.fqdn, motd = EXCLUDED.motd, last_seen_at = unixepoch('subsec')
+ON CONFLICT(public_key)
+DO UPDATE SET fqdn = EXCLUDED.fqdn,
+              motd = EXCLUDED.motd,
+              last_seen_at = unixepoch('subsec')
 RETURNING *;
 
--- name: UpdateNodeInfo :exec
+-- name: UpdateNodeBootstrapInfo :exec
 UPDATE node
-SET motd = ?, version = ?, last_seen_at = unixepoch('subsec')
+SET motd = ?, version = ?, last_info_res_at = unixepoch('subsec')
 WHERE public_key = ?;
 
 -- name: UpsertNodeAddress :one
@@ -37,6 +40,11 @@ UPDATE node_address
 SET node_id = ?, net = ?, ip = ?, port = ?, ptr = ?
 WHERE id = ?
 RETURNING *;
+
+-- name: UpdateNodeInfoRequestTime :exec
+UPDATE node
+SET last_info_req_at = ?
+WHERE id = ?;
 
 -- name: GetNodeAddress :one
 SELECT a.id
@@ -68,8 +76,21 @@ WHERE a.last_pong_at IS NULL
   AND a.last_ping_at IS NOT NULL
   AND (unixepoch('subsec') - a.last_ping_at) >= CAST(sqlc.arg(retry_delay) AS REAL);
 
--- name: GetNodeByAddress :one
-SELECT sqlc.embed(n)
+-- name: GetNodesWithStaleBootstrapInfo :many
+SELECT sqlc.embed(n), sqlc.embed(a)
 FROM node n
 JOIN node_address a ON a.node_id = n.id
-WHERE a.net = ? AND a.ip = ? AND a.port = ?;
+WHERE a.last_pong_at IS NOT NULL
+  AND a.net IN ("udp4", "udp6")
+  AND (unixepoch('subsec') - a.last_pong_at) < CAST(sqlc.arg(node_timeout) AS REAL)
+  AND (n.last_info_req_at IS NULL
+    OR (unixepoch('subsec') - n.last_info_req_at) >= CAST(sqlc.arg(info_interval) AS REAL))
+  AND (n.last_info_res_at IS NULL
+    OR (unixepoch('subsec') - n.last_info_res_at) >= CAST(sqlc.arg(info_interval) AS REAL));
+
+-- name: GetNodeByInfoResponseAddress :one
+SELECT sqlc.embed(n), sqlc.embed(a)
+FROM node n
+JOIN node_address a ON a.node_id = n.id
+WHERE a.net = ? AND a.ip = ? AND a.port = ?
+  AND (unixepoch('subsec') - n.last_info_req_at) < CAST(sqlc.arg(info_req_timeout) AS REAL);

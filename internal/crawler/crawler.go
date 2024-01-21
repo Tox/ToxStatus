@@ -29,6 +29,7 @@ type Crawler struct {
 
 	started        atomic.Bool
 	sendChan       chan *dhtPacket
+	sendInfoChan   chan *infoPacket
 	handleChan     chan *dhtPacket
 	handleInfoChan chan *infoPacket
 	recvChan       chan *rawPacket
@@ -76,6 +77,7 @@ func New(nodesRepo *repo.NodesRepo, opts CrawlerOptions) (*Crawler, error) {
 		ident:          ident,
 		pings:          ping.NewSet(ping.DefaultTimeout),
 		sendChan:       make(chan *dhtPacket),
+		sendInfoChan:   make(chan *infoPacket),
 		handleChan:     make(chan *dhtPacket),
 		handleInfoChan: make(chan *infoPacket),
 		recvChan:       make(chan *rawPacket),
@@ -150,6 +152,16 @@ func (c *Crawler) Run(ctx context.Context, bsNodes []*dht.Node) error {
 							return
 						}
 					}
+				case packet := <-c.sendInfoChan:
+					if err := c.sendInfoPacket(tp, packet.Packet, packet.Addr); err != nil {
+						c.logger.Error("Unable to send bootstrap info packet",
+							slog.String("addr", packet.Addr.String()),
+							slog.Any("err", err))
+
+						if errors.Is(err, net.ErrClosed) {
+							return
+						}
+					}
 				}
 
 				total++
@@ -209,8 +221,7 @@ func (c *Crawler) Run(ctx context.Context, bsNodes []*dht.Node) error {
 				}
 			case packet := <-c.handleInfoChan:
 				if err := c.handleInfoPacket(ctx, tp, packet.Packet, packet.Addr); err != nil {
-					c.logger.Error("Unable to handle packet",
-						slog.String("net", packet.Addr.Network()),
+					c.logger.Error("Unable to handle bootstrap info packet",
 						slog.String("addr", packet.Addr.String()),
 						slog.Any("err", err))
 				}
@@ -349,6 +360,51 @@ func (c *Crawler) Run(ctx context.Context, bsNodes []*dht.Node) error {
 		}
 	}()
 
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+
+		for {
+			reqTimes := make(map[int64]time.Time)
+			nodes, err := c.repo.GetNodesWithStaleBootstrapInfo(ctx)
+			if err == nil {
+				for _, node := range nodes {
+					for _, addr := range node.Addresses {
+						dhtNode, err := addr.DHTNode()
+						if err != nil {
+							c.logger.Error("Unable to convert db node address to dht node", slog.Any("err", err))
+							continue
+						}
+
+						packet := infoPacket{
+							Packet: new(bootstrap.InfoRequestPacket),
+							Addr:   dhtNode.Addr().(*net.UDPAddr),
+						}
+
+						select {
+						case <-ctx.Done():
+							return
+						case c.sendInfoChan <- &packet:
+							reqTimes[node.ID] = time.Now()
+						}
+					}
+				}
+			} else {
+				c.logger.Error("Unable to obtain dht nodes with stale bootstrap info", slog.Any("err", err))
+			}
+
+			if err := c.repo.UpdateNodeInfoRequestTime(ctx, reqTimes); err != nil {
+				c.logger.Error("Unable to update node bootstrap info request time", slog.Any("err", err))
+			}
+
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(1 * time.Second):
+			}
+		}
+	}()
+
 	select {
 	case err = <-listenErrChan:
 		cancel()
@@ -385,11 +441,6 @@ func (c *Crawler) handleInfoPacket(ctx context.Context, tp transport.Transport, 
 	default:
 		err = fmt.Errorf("unsupported bootstrap info packet type: %d", packet.ID())
 	}
-
-	// TODO: Check whether we actually asked for bootstrap info from this node address
-	// TODO: Temporarily store
-
-	c.repo.
 
 	return err
 }
@@ -444,7 +495,8 @@ func (c *Crawler) handleSendNodesPacket(ctx context.Context, tp transport.Transp
 }
 
 func (c *Crawler) handleBootstrapInfoPacket(ctx context.Context, tp transport.Transport, addr *net.UDPAddr, packet *bootstrap.InfoResponsePacket) error {
-	return nil
+	c.logger.Debug("Handling bootstrap info response packet", slog.String("addr", addr.String()))
+	return c.repo.UpdateNodeInfo(ctx, addr, packet.MOTD, packet.Version)
 }
 
 // getNodes queries the given DHT node to search for the given publicKey.
@@ -497,7 +549,25 @@ func (c *Crawler) sendPacket(tp transport.Transport, packet dht.Packet, destNode
 		return err
 	}
 
-	return tp.SendPacket(packetBytes, &net.UDPAddr{IP: destNode.IP, Port: destNode.Port})
+	return tp.SendPacket(packetBytes, destNode.Addr().(*net.UDPAddr))
+}
+
+func (c *Crawler) sendInfoPacket(tp transport.Transport, packet bootstrap.Packet, addr *net.UDPAddr) error {
+	c.logger.Debug("Sending bootstrap info request packet",
+		slog.String("addr", addr.String()),
+		slog.String("packet_type", packet.ID().String()))
+
+	rawPacket, err := bootstrap.MarshalPacket(packet)
+	if err != nil {
+		return err
+	}
+
+	packetBytes, err := rawPacket.MarshalBinary()
+	if err != nil {
+		return err
+	}
+
+	return tp.SendPacket(packetBytes, addr)
 }
 
 func (c *Crawler) receivePacket(ctx context.Context, data []byte, addr *net.UDPAddr) error {
@@ -513,6 +583,7 @@ func (c *Crawler) receivePacket(ctx context.Context, data []byte, addr *net.UDPA
 	bsPacket, err := bootstrap.UnmarshalBinary(data)
 	if err == nil {
 		c.handleInfoChan <- &infoPacket{Addr: addr, Packet: bsPacket}
+		return nil
 	}
 	if err != nil && !errors.Is(err, bootstrap.ErrUnknownPacketType) {
 		return fmt.Errorf("bootstrap info packet check: %w", err)
