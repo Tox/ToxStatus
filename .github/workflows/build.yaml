@@ -15,6 +15,7 @@ jobs:
         run: |
           nix develop -c go mod tidy
           nix develop -c go generate ./...
+          nix develop -c go fmt ./...
           git diff --exit-code
       - name: Test
         run: |
