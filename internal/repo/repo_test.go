@@ -16,10 +16,13 @@ import (
 
 var ctx = context.Background()
 
+func init() {
+	db.RegisterPragmaHook(2000)
+}
+
 func initRepo(t *testing.T) (repo *NodesRepo, close func() error) {
 	readConn, writeConn, err := db.OpenReadWrite(ctx, ":memory:", db.OpenOptions{
-		CacheSize: 2000,
-		Params:    map[string]string{"cache": "shared"},
+		Params: map[string]string{"cache": "shared"},
 	})
 	if err != nil {
 		t.Fatal(err)

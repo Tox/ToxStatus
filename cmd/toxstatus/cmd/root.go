@@ -72,9 +72,8 @@ func startRoot(cmd *cobra.Command, args []string) {
 		NoColor: !isatty.IsTerminal(os.Stderr.Fd()),
 	}))
 
-	readConn, writeConn, err := db.OpenReadWrite(ctx, rootFlags.DB, db.OpenOptions{
-		CacheSize: rootFlags.DBCacheSize,
-	})
+	db.RegisterPragmaHook(rootFlags.DBCacheSize)
+	readConn, writeConn, err := db.OpenReadWrite(ctx, rootFlags.DB, db.OpenOptions{})
 	if err != nil {
 		logErrorAndExit(logger, "Unable to open db", slog.Any("err", err))
 	}

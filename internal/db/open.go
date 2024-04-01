@@ -6,11 +6,30 @@ import (
 	"fmt"
 	"net/url"
 	"runtime"
+
+	"github.com/mattn/go-sqlite3"
 )
 
 type OpenOptions struct {
-	CacheSize int
-	Params    map[string]string
+	Params map[string]string
+}
+
+func RegisterPragmaHook(cacheSize int) {
+	sql.Register("toxstatus_sqlite3", &sqlite3.SQLiteDriver{
+		ConnectHook: func(c *sqlite3.SQLiteConn) error {
+			fmt.Println("Executing pragmas")
+			pragmas := fmt.Sprintf(`
+				PRAGMA journal_mode = WAL;
+				PRAGMA busy_timeout = 5000;
+				PRAGMA synchronous = NORMAL;
+				PRAGMA cache_size = -%d;
+				PRAGMA foreign_keys = true;
+				PRAGMA temp_store = memory;
+			`, cacheSize)
+			_, err := c.Exec(pragmas, nil)
+			return err
+		},
+	})
 }
 
 func OpenReadWrite(ctx context.Context, dbFile string, opts OpenOptions) (rdb *sql.DB, wdb *sql.DB, err error) {
@@ -27,16 +46,7 @@ func OpenReadWrite(ctx context.Context, dbFile string, opts OpenOptions) (rdb *s
 	query.Set("_txlock", "immediate")
 	uri.RawQuery = query.Encode()
 
-	pragmas := fmt.Sprintf(`
-		PRAGMA journal_mode = WAL;
-		PRAGMA busy_timeout = 5000;
-		PRAGMA synchronous = NORMAL;
-		PRAGMA cache_size = -%d;
-		PRAGMA foreign_keys = true;
-		PRAGMA temp_store = memory;
-	`, opts.CacheSize)
-
-	readConn, err := sql.Open("sqlite3", uri.String())
+	readConn, err := sql.Open("toxstatus_sqlite3", uri.String())
 	if err != nil {
 		return nil, nil, err
 	}
@@ -47,11 +57,7 @@ func OpenReadWrite(ctx context.Context, dbFile string, opts OpenOptions) (rdb *s
 	}()
 	readConn.SetMaxOpenConns(max(4, runtime.NumCPU()))
 
-	if _, err = readConn.ExecContext(ctx, pragmas); err != nil {
-		return nil, nil, fmt.Errorf("configure db conn: %w", err)
-	}
-
-	writeConn, err := sql.Open("sqlite3", uri.String())
+	writeConn, err := sql.Open("toxstatus_sqlite3", uri.String())
 	if err != nil {
 		return nil, nil, err
 	}
@@ -61,10 +67,6 @@ func OpenReadWrite(ctx context.Context, dbFile string, opts OpenOptions) (rdb *s
 		}
 	}()
 	writeConn.SetMaxOpenConns(1)
-
-	if _, err = writeConn.ExecContext(ctx, pragmas); err != nil {
-		return nil, nil, fmt.Errorf("configure db conn: %w", err)
-	}
 
 	if _, err = writeConn.ExecContext(ctx, Schema); err != nil {
 		return nil, nil, fmt.Errorf("init db: %w", err)
