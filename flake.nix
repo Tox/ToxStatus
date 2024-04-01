@@ -18,8 +18,6 @@
           subPackages = [ "cmd/toxstatus" ];
           vendorHash = "sha256-5cVWDVroDrC32xq5p0DkeRBgxHGfA178JdfgiPvnAbw=";
 
-          tags = ["sqlite_foreign_keys"];
-
           ldflags = let
             pkgPath = "github.com/Tox/ToxStatus/internal/version";
           in [

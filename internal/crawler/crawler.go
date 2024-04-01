@@ -595,7 +595,7 @@ func (c *Crawler) receivePacket(ctx context.Context, data []byte, addr *net.UDPA
 		c.handleInfoChan <- &infoPacket{Addr: addr, Packet: bsPacket}
 		return nil
 	}
-	if err != nil && !errors.Is(err, bootstrap.ErrUnknownPacketType) {
+	if !errors.Is(err, bootstrap.ErrUnknownPacketType) {
 		return fmt.Errorf("bootstrap info packet check: %w", err)
 	}
 

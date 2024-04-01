@@ -17,8 +17,9 @@ import (
 var ErrNotFound = fmt.Errorf("not found: %w", sql.ErrNoRows)
 
 type NodesRepo struct {
-	db *sql.DB
-	q  *db.Queries
+	wdb *sql.DB
+	rq  *db.Queries
+	wq  *db.Queries
 }
 
 type nodeAddressCombo struct {
@@ -26,15 +27,16 @@ type nodeAddressCombo struct {
 	NodeAddress db.NodeAddress
 }
 
-func New(sqldb *sql.DB) *NodesRepo {
+func New(rdb *sql.DB, wdb *sql.DB) *NodesRepo {
 	return &NodesRepo{
-		db: sqldb,
-		q:  db.New(sqldb),
+		wdb: wdb,
+		rq:  db.New(rdb),
+		wq:  db.New(wdb),
 	}
 }
 
 func (r *NodesRepo) GetNodeByPublicKey(ctx context.Context, pk *dht.PublicKey) (*models.Node, error) {
-	rows, err := r.q.GetNodeByPublicKey(ctx, (*db.PublicKey)(pk))
+	rows, err := r.rq.GetNodeByPublicKey(ctx, (*db.PublicKey)(pk))
 	if err != nil {
 		return nil, err
 	}
@@ -53,7 +55,7 @@ func (r *NodesRepo) GetNodeByPublicKey(ctx context.Context, pk *dht.PublicKey) (
 }
 
 func (r *NodesRepo) HasNodeByPublicKey(ctx context.Context, pk *dht.PublicKey) (bool, error) {
-	res, err := r.q.HasNodeByPublicKey(ctx, (*db.PublicKey)(pk))
+	res, err := r.rq.HasNodeByPublicKey(ctx, (*db.PublicKey)(pk))
 	if err != nil {
 		return false, err
 	}
@@ -62,17 +64,17 @@ func (r *NodesRepo) HasNodeByPublicKey(ctx context.Context, pk *dht.PublicKey) (
 }
 
 func (r *NodesRepo) GetNodeCount(ctx context.Context) (int64, error) {
-	return r.q.GetNodeCount(ctx)
+	return r.rq.GetNodeCount(ctx)
 }
 
 func (r *NodesRepo) TrackDHTNode(ctx context.Context, node *dht.Node) (*models.Node, error) {
-	tx, err := r.db.Begin()
+	tx, err := r.wdb.Begin()
 	if err != nil {
 		return nil, err
 	}
 	defer tx.Rollback()
 
-	q := r.q.WithTx(tx)
+	q := r.wq.WithTx(tx)
 	dbNode, err := q.UpsertNode(ctx, (*db.PublicKey)(node.PublicKey))
 	if err != nil {
 		return nil, fmt.Errorf("upsert node: %w", err)
@@ -99,7 +101,7 @@ func (r *NodesRepo) TrackDHTNode(ctx context.Context, node *dht.Node) (*models.N
 }
 
 func (r *NodesRepo) getDHTNodeAddressID(ctx context.Context, node *dht.Node) (int64, error) {
-	return r.q.GetNodeAddress(ctx, &db.GetNodeAddressParams{
+	return r.rq.GetNodeAddress(ctx, &db.GetNodeAddressParams{
 		PublicKey: (*db.PublicKey)(node.PublicKey),
 		Net:       node.Type.Net(),
 		Ip:        node.IP.String(),
@@ -116,7 +118,7 @@ func (r *NodesRepo) PingDHTNode(ctx context.Context, node *dht.Node) error {
 		return err
 	}
 
-	return r.q.PingNodeAddress(ctx, id)
+	return r.rq.PingNodeAddress(ctx, id)
 }
 
 func (r *NodesRepo) PongDHTNode(ctx context.Context, node *dht.Node) error {
@@ -128,11 +130,11 @@ func (r *NodesRepo) PongDHTNode(ctx context.Context, node *dht.Node) error {
 		return err
 	}
 
-	return r.q.PongNodeAddress(ctx, id)
+	return r.rq.PongNodeAddress(ctx, id)
 }
 
 func (r *NodesRepo) GetNodesWithStaleBootstrapInfo(ctx context.Context) ([]*models.Node, error) {
-	rows, err := r.q.GetNodesWithStaleBootstrapInfo(ctx, &db.GetNodesWithStaleBootstrapInfoParams{
+	rows, err := r.rq.GetNodesWithStaleBootstrapInfo(ctx, &db.GetNodesWithStaleBootstrapInfoParams{
 		NodeTimeout:  (5 * time.Minute).Seconds(),
 		InfoInterval: (1 * time.Minute).Seconds(),
 	})
@@ -156,13 +158,13 @@ func (r *NodesRepo) GetNodesWithStaleBootstrapInfo(ctx context.Context) ([]*mode
 }
 
 func (r *NodesRepo) UpdateNodeInfoRequestTime(ctx context.Context, addrReqTimes map[int64]time.Time) error {
-	tx, err := r.db.Begin()
+	tx, err := r.wdb.Begin()
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
 
-	q := r.q.WithTx(tx)
+	q := r.wq.WithTx(tx)
 	for id, reqTime := range addrReqTimes {
 		if err := q.UpdateNodeInfoRequestTime(ctx, &db.UpdateNodeInfoRequestTimeParams{
 			ID:            id,
@@ -176,7 +178,7 @@ func (r *NodesRepo) UpdateNodeInfoRequestTime(ctx context.Context, addrReqTimes 
 }
 
 func (r *NodesRepo) UpdateNodeInfo(ctx context.Context, addr *net.UDPAddr, motd string, version uint32) error {
-	tx, err := r.db.Begin()
+	tx, err := r.wdb.Begin()
 	if err != nil {
 		return err
 	}
@@ -189,8 +191,8 @@ func (r *NodesRepo) UpdateNodeInfo(ctx context.Context, addr *net.UDPAddr, motd 
 		nodeType = dht.NodeTypeUDPIP6
 	}
 
-	q := r.q.WithTx(tx)
-	node, err := r.q.GetNodeByInfoResponseAddress(ctx, &db.GetNodeByInfoResponseAddressParams{
+	q := r.wq.WithTx(tx)
+	node, err := q.GetNodeByInfoResponseAddress(ctx, &db.GetNodeByInfoResponseAddressParams{
 		InfoReqTimeout: (10 * time.Second).Seconds(),
 		Net:            nodeType.Net(),
 		Ip:             addr.IP.String(),
@@ -212,7 +214,7 @@ func (r *NodesRepo) UpdateNodeInfo(ctx context.Context, addr *net.UDPAddr, motd 
 }
 
 func (r *NodesRepo) GetResponsiveDHTNodes(ctx context.Context) ([]*dht.Node, error) {
-	rows, err := r.q.GetResponsiveNodes(ctx)
+	rows, err := r.rq.GetResponsiveNodes(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -229,7 +231,7 @@ func (r *NodesRepo) GetResponsiveDHTNodes(ctx context.Context) ([]*dht.Node, err
 }
 
 func (r *NodesRepo) GetUnresponsiveDHTNodes(ctx context.Context, retryDelay time.Duration) ([]*dht.Node, error) {
-	rows, err := r.q.GetUnresponsiveNodes(ctx, retryDelay.Seconds())
+	rows, err := r.rq.GetUnresponsiveNodes(ctx, retryDelay.Seconds())
 	if err != nil {
 		return nil, err
 	}

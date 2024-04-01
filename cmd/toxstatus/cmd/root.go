@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -38,6 +37,7 @@ var (
 		PprofAddr         string
 		ToxUDPAddr        string
 		DB                string
+		DBCacheSize       int
 		LogLevel          string
 		Workers           int
 	}{}
@@ -49,7 +49,8 @@ func init() {
 	Root.Flags().DurationVar(&rootFlags.HTTPClientTimeout, "http-client-timeout", 10*time.Second, "the http client timeout for requests to nodes.tox.chat")
 	Root.Flags().StringVar(&rootFlags.PprofAddr, "pprof-addr", "", "the network address to listen of for the pprof HTTP server")
 	Root.Flags().StringVar(&rootFlags.ToxUDPAddr, "tox-udp-addr", ":33450", "the UDP network address to listen on for Tox")
-	Root.Flags().StringVar(&rootFlags.DB, "db", "", "the sqlite database to use")
+	Root.Flags().StringVar(&rootFlags.DB, "db", "", "the sqlite database file to use")
+	Root.Flags().IntVar(&rootFlags.DBCacheSize, "db-cache-size", 100000, "the sqlite cache size to use (in KB)")
 	Root.Flags().StringVar(&rootFlags.LogLevel, "log-level", "info", "the log level to use")
 	Root.Flags().IntVar(&rootFlags.Workers, "workers", min(maxDefaultWorkers, runtime.NumCPU()), "the amount of workers to use")
 	Root.MarkFlagRequired("db")
@@ -71,17 +72,16 @@ func startRoot(cmd *cobra.Command, args []string) {
 		NoColor: !isatty.IsTerminal(os.Stderr.Fd()),
 	}))
 
-	dbConn, err := sql.Open("sqlite3", rootFlags.DB)
+	readConn, writeConn, err := db.OpenReadWrite(ctx, rootFlags.DB, db.OpenOptions{
+		CacheSize: rootFlags.DBCacheSize,
+	})
 	if err != nil {
 		logErrorAndExit(logger, "Unable to open db", slog.Any("err", err))
-		return
 	}
-	defer dbConn.Close()
-
-	if _, err := dbConn.ExecContext(ctx, db.Schema); err != nil {
-		logErrorAndExit(logger, "Unable to initialize db", slog.Any("err", err))
-		return
-	}
+	defer func() {
+		readConn.Close()
+		writeConn.Close()
+	}()
 
 	if rootFlags.PprofAddr != "" {
 		logger.Info("Starting pprof server")
@@ -106,7 +106,7 @@ func startRoot(cmd *cobra.Command, args []string) {
 		}()
 	}
 
-	nodesRepo := repo.New(dbConn)
+	nodesRepo := repo.New(readConn, writeConn)
 	cr, err := crawler.New(nodesRepo, crawler.CrawlerOptions{
 		Logger:     logger,
 		HTTPAddr:   rootFlags.HTTPAddr,

@@ -19,7 +19,7 @@ jobs:
           git diff --exit-code
       - name: Test
         run: |
-          nix develop -c go test -tags sqlite_foreign_keys -v ./...
+          nix develop -c go test -v ./...
       - name: Build
         run: |
           nix build --print-build-logs

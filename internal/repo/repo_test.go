@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
-	"database/sql"
 	"errors"
 	"net"
 	"testing"
@@ -18,16 +17,24 @@ import (
 var ctx = context.Background()
 
 func initRepo(t *testing.T) (repo *NodesRepo, close func() error) {
-	dbConn, err := sql.Open("sqlite3", ":memory:")
+	readConn, writeConn, err := db.OpenReadWrite(ctx, ":memory:", db.OpenOptions{
+		CacheSize: 2000,
+		Params:    map[string]string{"cache": "shared"},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if _, err := dbConn.ExecContext(ctx, db.Schema); err != nil {
-		t.Fatal(err)
+	return New(readConn, writeConn), func() error {
+		var errs []error
+		if err := readConn.Close(); err != nil {
+			errs = append(errs, err)
+		}
+		if err := writeConn.Close(); err != nil {
+			errs = append(errs, err)
+		}
+		return errors.Join(errs...)
 	}
-
-	return New(dbConn), dbConn.Close
 }
 
 func generateNode(t *testing.T) *models.Node {
@@ -68,7 +75,7 @@ func TestAddNode(t *testing.T) {
 	defer close()
 
 	node := generateNode(t)
-	dbNode, err := repo.q.UpsertNode(ctx, (*db.PublicKey)(node.PublicKey))
+	dbNode, err := repo.wq.UpsertNode(ctx, (*db.PublicKey)(node.PublicKey))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,7 +100,7 @@ func TestHasNodeByPublicKey(t *testing.T) {
 	defer close()
 
 	node := generateNode(t)
-	_, err := repo.q.UpsertNode(ctx, (*db.PublicKey)(node.PublicKey))
+	_, err := repo.wq.UpsertNode(ctx, (*db.PublicKey)(node.PublicKey))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,7 +127,7 @@ func TestPongNonExistentNode(t *testing.T) {
 	defer close()
 
 	pk := generatePublicKey(t)
-	_, err := repo.q.UpsertNode(ctx, (*db.PublicKey)(pk))
+	_, err := repo.wq.UpsertNode(ctx, (*db.PublicKey)(pk))
 	if err != nil {
 		t.Fatal(err)
 	}

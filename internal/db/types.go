@@ -1,8 +1,3 @@
-//go:build sqlite_foreign_keys
-
-// By specifying our go-sqlite3 build tags above, the build will fail if we
-// forget to specify it in the go build/test command.
-
 package db
 
 import (
