@@ -16,7 +16,7 @@
           src = ./.;
 
           subPackages = [ "cmd/toxstatus" ];
-          vendorHash = "sha256-5cVWDVroDrC32xq5p0DkeRBgxHGfA178JdfgiPvnAbw=";
+          vendorHash = "sha256-kD00o5RpT+qq9QJAUR5NLgwMQn6IofkdpWk2mbfBa2g=";
 
           ldflags = let
             pkgPath = "github.com/Tox/ToxStatus/internal/version";
